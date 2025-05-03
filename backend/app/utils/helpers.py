@@ -15,7 +15,7 @@ def map_tapered_insulation_value(value):
     
     # Define lookup tables based on the image data
     insulation_mappings = {
-        "TissueFaced PIR": ["TT47", "TR27", "Glass Tissue PIR", "Powerdeck F", "Adhered", "MG", "TR/MG", "FR/MG", "BauderPIR FA-TE", "Evatherm A", "Hytherm ADH"],
+        "TissueFaced PIR": ["TT47", "TR27", "Glass Tissue PIR", "Powerdeck F", "Adhered", "MG", "TR/MG", "FR/MG", "BauderPIR FA-TE", "PU 25W", "Evatherm A", "Hytherm ADH"],
         "TorchOn PIR": ["TT44", "TR24", "Torched", "Powerdeck U", "Torched", "BGM", "TR/BGM", "FR/BGM", "BauderPIR FA"],
         "FoilFaced PIR": ["TT46", "TR26", "Foil", "Powerdeck Eurodeck", "Mech Fixed", "ALU", "TR/ALU", "FR/ALU", "Aluminium Faced"],
         "ROCKWOOL HardRock MultiFix DD": ["Mineral wool", "Hardrock", "stonewool", "stone wool", "rock wool", "bauderrock"],
