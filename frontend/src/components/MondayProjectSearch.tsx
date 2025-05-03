@@ -96,7 +96,8 @@ export const MondayProjectSearch: React.FC<MondayProjectSearchProps> = ({
     };
     
     doSearch();
-  }, [projectName]); // searchProjects is created on each render, so don't include it here
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectName]);
 
   if (!projectName) {
     return null;

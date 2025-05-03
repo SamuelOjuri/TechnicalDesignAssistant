@@ -24,7 +24,6 @@ const App: React.FC = () => {
   const [projectName, setProjectName] = useState<string | null>(null);
   const [showMondaySearch, setShowMondaySearch] = useState(false);
   const [enquiryType, setEnquiryType] = useState<'New Enquiry' | 'Amendment' | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [isLoadingResults, setIsLoadingResults] = useState(false);
   const [currentFile, setCurrentFile] = useState<string | null>(null);
   const [processingStage, setProcessingStage] = useState<string | null>(null);
@@ -38,7 +37,6 @@ const App: React.FC = () => {
     setProjectName(null);
     setShowMondaySearch(false);
     setEnquiryType(null);
-    setError(null);
     
     const formData = new FormData();
     const fileArray = Array.from(files);
@@ -99,7 +97,6 @@ const App: React.FC = () => {
       
     } catch (error) {
       console.error('Error:', error);
-      setError(`Error processing files: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsProcessing(false);
       setCurrentFile(null);
@@ -225,7 +222,6 @@ const App: React.FC = () => {
     setProjectName(null);
     setShowMondaySearch(false);
     setEnquiryType(null);
-    setError(null);
     
     // Clear file selection - we need to find the file input element and reset it
     const fileInput = document.querySelector('input[type="file"]');
