@@ -15,7 +15,7 @@ pip-log.txt
 *.log
 *.sqlite3
 *.csv
-*.json
+#*.json
 *.xml
 
 # Ignore system-specific files
