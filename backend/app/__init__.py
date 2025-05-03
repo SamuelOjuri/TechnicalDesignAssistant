@@ -13,7 +13,10 @@ def create_app(config_class=Config):
     CORS(
         app,
         resources={r"/api/*": {
-            "origins": ["http://localhost:3000"],
+            "origins": [
+                "http://localhost:3000",
+                "https://technical-design-assistant.netlify.app"
+            ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
             "supports_credentials": True,
