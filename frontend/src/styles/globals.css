@@ -1,0 +1,255 @@
+@import "tw-animate-css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* TaperedPlus branding colors */
+  --tapered-red: #b82c25;
+  --tapered-dark: #1f2937;
+  --tapered-light-gray: #f3f4f6;
+  --tapered-white: #ffffff;
+  
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(215 19% 17%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(215 19% 17%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(215 19% 17%);
+  --primary: hsl(4 65% 44%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(215 19% 17%);
+  --secondary-foreground: hsl(0 0% 100%);
+  --muted: hsl(220 14% 96%);
+  --muted-foreground: hsl(215 16% 47%);
+  --accent: hsl(220 14% 96%);
+  --accent-foreground: hsl(215 19% 17%);
+  --destructive: hsl(0 84% 60%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(214 32% 91%);
+  --input: hsl(214 32% 91%);
+  --ring: hsl(4 65% 44%);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: hsl(215 19% 17%);
+  --foreground: hsl(0 0% 100%);
+  --card: hsl(215 19% 17%);
+  --card-foreground: hsl(0 0% 100%);
+  --popover: hsl(215 19% 17%);
+  --popover-foreground: hsl(0 0% 100%);
+  --primary: hsl(4 65% 44%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(215 19% 17%);
+  --secondary-foreground: hsl(0 0% 100%);
+  --muted: hsl(217 33% 18%);
+  --muted-foreground: hsl(215 20% 65%);
+  --accent: hsl(217 33% 18%);
+  --accent-foreground: hsl(0 0% 100%);
+  --destructive: hsl(0 63% 31%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(217 33% 18%);
+  --input: hsl(217 33% 18%);
+  --ring: hsl(4 65% 44%);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+/* Custom TaperedPlus styling */
+.app-header {
+  background-color: var(--tapered-red);
+  padding: 1rem;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: white;
+}
+
+.section-title {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: var(--tapered-dark);
+  margin-bottom: 1rem;
+}
+
+.tapered-button {
+  background-color: var(--tapered-red);
+  color: white;
+  padding: 0.5rem 1.5rem;
+  border-radius: 0.25rem;
+  transition: background-color 0.2s;
+}
+
+.tapered-button:hover {
+  background-color: hsl(4 65% 38%);
+}
+
+.tapered-outline-button {
+  background-color: transparent;
+  color: var(--tapered-dark);
+  border: 1px solid var(--tapered-dark);
+  padding: 0.5rem 1.5rem;
+  border-radius: 0.25rem;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.tapered-outline-button:hover {
+  background-color: var(--tapered-dark);
+  color: white;
+}
+
+/* Add these new classes */
+.step-indicator {
+  background-color: #000000;
+  color: white;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  margin-right: 0.75rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  position: relative;
+  border: 2px solid var(--primary);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+/* For connected step indicators */
+.step-indicator::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  width: 24px;
+  height: 2px;
+  background-color: #000000;
+  opacity: 0.3;
+  transform: translateY(-50%);
+  display: none; /* Hidden by default, enable with additional class */
+}
+
+.step-indicator.connected::after {
+  display: block;
+}
+
+.process-button {
+  background-color: #000000 !important;
+  color: white;
+}
+
+.process-button:hover {
+  background-color: #333333 !important;
+}
+
+/* Add a new section banner class for consistency */
+.section-banner {
+  background-color: var(--primary);
+  color: white;
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.section-banner .step-indicator {
+  margin-right: 0.75rem;
+}
+
+/* Add styling for section content to be consistent */
+.section-content {
+  padding: 1.5rem;
+  background-color: white;
+  border-radius: 0 0 0.375rem 0.375rem;
+}
+
+/* Ensure consistent spacing between sections */
+.section-container {
+  margin-bottom: 2rem;
+}
+
+/* Add more specific styling for section content areas */
+.results-content,
+.chat-content {
+  padding: 1.5rem;
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-top: none;
+  border-radius: 0 0 0.375rem 0.375rem;
+  margin-top: 0;
+}
+
+/* Add extra spacing for text-only areas in section 2 and 3 */
+.placeholder-text {
+  padding: 1rem 0;
+  text-align: center;
+  color: #6b7280;
+}
+
+/* Enhance the default empty state for Analysis Results section */
+.analysis-placeholder {
+  padding: 2rem 1.5rem;
+  background-color: white;
+  border-radius: 0.5rem;
+  margin: 1.5rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 120px;
+  border: 1px dashed #d1d5db;
+}
+
+.analysis-placeholder-text {
+  color: #4b5563;
+  font-size: 1rem;
+  max-width: 80%;
+  margin: 0 auto;
+}
+
+.analysis-placeholder-icon {
+  color: #9ca3af;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+
+/* Add a subtle box shadow to make the section pop */
+.section-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background-color: white;
+} 
