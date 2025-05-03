@@ -39,7 +39,6 @@ MarkupSafe==3.0.2
 narwhals==1.30.0
 openpyxl==3.1.5
 packaging==24.2
-pandas==2.2.3
 pillow==11.1.0
 proto-plus==1.26.1
 protobuf==5.29.3
@@ -66,7 +65,6 @@ tzdata==2025.1
 uritemplate==4.1.1
 urllib3==2.3.0
 watchdog==6.0.0
-XlsxWriter==3.2.2
 anyio==4.8.0 
 google-genai==1.5.0 
 h11==0.14.0 
@@ -81,8 +79,7 @@ colorclass==2.2.2
 compressed-rtf==1.0.6 
 cryptography==44.0.2 
 easygui==0.98.3 
-ebcdic==1.1.1 
-extract-msg==0.53.2 
+ebcdic==1.1.1  
 lark==1.1.9 
 msoffcrypto-tool==5.4.2 
 olefile==0.47 
@@ -93,6 +90,4 @@ red-black-tree-mod==1.22
 soupsieve==2.6 
 tzlocal==5.3.1 
 win-unicode-console==0.5
-certifi==2025.1.31
-charset-normalizer==3.4.1
-idna==3.10
+
