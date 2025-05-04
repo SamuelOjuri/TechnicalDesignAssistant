@@ -284,7 +284,8 @@ const App: React.FC = () => {
           
           {showMondaySearch && projectName && (
             <div className="section-container">
-              <MondayProjectSearch 
+              <MondayProjectSearch
+                apiBaseUrl={API_BASE_URL}
                 projectName={projectName}
                 onProjectSelected={handleProjectSelected}
                 onContinueAsNew={handleContinueAsNew}
