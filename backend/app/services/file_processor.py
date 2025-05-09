@@ -67,16 +67,17 @@ def process_files(files):
             if os.path.exists(path):
                 os.remove(path)
     
+    # First, extract parameters from the text using LLM
+    params = extract_parameters(all_text)
+    
     # Extract project name if email data is available
     project_name = None
     if email_data:
+        # Pass the already extracted all_text instead of reprocessing attachments
         project_name = extract_project_name_from_content(
             email_data['email_text'], 
-            email_data['attachments_data']
+            all_text  # Pass the full extracted text instead of raw attachments
         )
-    
-    # Extract parameters from the text using LLM
-    params = extract_parameters(all_text)
     
     # Set reason for change to "New Enquiry" by default for new uploads
     # if no specific reason was found by the LLM

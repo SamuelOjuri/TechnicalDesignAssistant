@@ -86,16 +86,18 @@ def extract_parameters(all_text, enquiry_type=None):
     # Override the Reason for Change if enquiry_type was explicitly provided
     if enquiry_type:
         df_row["Reason for Change"] = enquiry_type
+
+    print(f"Parameters extracted: {df_row}")
     
     return df_row
 
-def extract_project_name_from_content(email_text, attachments_data):
+def extract_project_name_from_content(email_text, all_extracted_text):
     """
     Extract the project name from email content and attachments.
     
     Args:
         email_text: The email text content
-        attachments_data: Data from email attachments
+        all_extracted_text: Already extracted text from email and attachments
     
     Returns:
         str: The extracted project name
@@ -105,11 +107,16 @@ def extract_project_name_from_content(email_text, attachments_data):
     Based on the following email content and attachments, extract the project name (drawing title) which is usually the project location.
     Return only the project name, nothing else.
     
-    {email_text}
+    {all_extracted_text}
     """
     
     # Send to Gemini for analysis
     response = query_llm(prompt, "")
     
-    # Return the response as the project name
+    # Add null check before returning
+    if response is None:
+        return ""
+    
+    print(f"Project name extracted: {response}")
+    
     return response.strip() 
