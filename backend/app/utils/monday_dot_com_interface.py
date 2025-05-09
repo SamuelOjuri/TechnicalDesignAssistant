@@ -132,78 +132,203 @@ class MondayDotComInterface:
         else:
             return None, f"Item '{item_name}' not found on board"
     
-    def check_project_exists(self, project_name):
+    def _build_items_page_query(self, board_id, start_date, cursor=None):
         """
-        Check if a project with a similar name already exists in Monday.com.
+        Build *one* GraphQL query string for the Monday.com `items_page`
+        endpoint.  Monday's API rules:
+            • FIRST page  → supply **query_params** only  
+            • NEXT pages → supply **cursor** only
+        Passing both triggers the
+        "You must provide either a 'query_params' or a 'cursor', but not both"
+        error we are fixing here.
+        """
+        # ----- build the parameter block -----------------------------------
+        params = ["limit: 500"]
+        if cursor:
+            params.append(f'cursor: "{cursor}"')
+        else:
+            params.append(f"""
+                query_params: {{
+                    rules: [{{
+                        column_id: "date9__1",
+                        compare_value: ["EXACT", "{start_date}"],
+                        operator: greater_than_or_equals
+                    }}]
+                }}""")
+
+        params_block = ",\n".join(params)
+
+        # ----- full GraphQL -------------------------------------------------
+        gql = f"""
+        query {{
+          boards(ids: {board_id}) {{
+            items_page(
+              {params_block}
+            ) {{
+              cursor
+              items {{
+                id
+                name
+                state
+                column_values(ids: ["text3__1", "date9__1"]) {{
+                  id
+                  text
+                  __typename
+                  ... on MirrorValue {{
+                    display_value
+                  }}
+                }}
+              }}
+            }}
+          }}
+        }}
+        """
+        # `execute_query` already wraps the string in {"query": …}
+        return gql
+
+    def get_tapered_enquiry_projects(self, start_date="2021-01-01"):
+        """
+        Return active projects whose **Created** date (column `date9__1`)
+        is **on or after** `start_date` (YYYY-MM-DD) from the
+        "Tapered Enquiry Maintenance" board.
         
         Args:
-            project_name: Name of the project to search for
+            start_date: The start date in YYYY-MM-DD format
             
         Returns:
-            dict: Search results
+            tuple: (items_list, error_message)
         """
-        query = """
-        query {
-            boards(ids: [1825117125]) {
-                name
-                id
-                items_page(limit: 500) {
-                    items {
-                        id
-                        name
-                        column_values(ids: ["text3__1"]) {
-                            id
-                            text
-                        }
-                    }
-                }
-            }
+        board_id = "1825117125"
+        items = []
+
+        # ---- first page ----------------------------------------------------
+        query = self._build_items_page_query(board_id, start_date)
+        response = self.execute_query(query)
+
+        if not response:
+            return None, "No response from Monday.com"
+
+        if "errors" in response:
+            return None, f"Monday.com API error: {response['errors']}"
+
+        try:
+            page = response["data"]["boards"][0]["items_page"]
+        except (KeyError, IndexError, TypeError):
+            return None, "Unexpected payload structure from Monday.com"
+
+        # Collect items & paginate
+        def _append_active(page_obj):
+            for itm in page_obj.get("items", []):
+                if itm.get("state") == "active":
+                    items.append(itm)
+
+        _append_active(page)
+        cursor = page.get("cursor")
+
+        while cursor:
+            query = self._build_items_page_query(board_id, start_date, cursor)
+            response = self.execute_query(query)
+
+            # More thorough error checking for nested values
+            if not response or "data" not in response:
+                break
+            
+            # Check if boards exists and is not empty
+            if not response["data"].get("boards"):
+                break
+                
+            # Access the first board safely
+            board = response["data"]["boards"][0] if response["data"]["boards"] else None
+            if not board or "items_page" not in board:
+                break
+                
+            page = board["items_page"]
+            _append_active(page)
+            cursor = page.get("cursor")
+
+        if not items:
+            return None, (
+                f"No active projects created on or after {start_date} "
+                "were found on the Tapered Enquiry Maintenance board."
+            )
+        return items, ""
+
+    def check_project_exists(self, project_name, similarity_threshold=0.55):
+        """
+        Check if a project name exists or is similar to any project in the Tapered Enquiry Maintenance board.
+        Uses string matching to find similar project names.
+        
+        Args:
+            project_name: The project name to search for
+            similarity_threshold: Threshold for string similarity (0.0 to 1.0)
+            
+        Returns:
+            dict: Search results with exists, matches, and error information
+        """
+        # Initialize result dictionary
+        result = {
+            'exists': False, 
+            'type': 'new',
+            'matches': [],
+            'best_match': None,
+            'similarity_score': 0.0,
+            'error': ''
         }
-        """
         
-        result = self.execute_query(query)
+        # Get all projects from Monday.com
+        projects, error = self.get_tapered_enquiry_projects()
         
-        if not result or "data" not in result or "boards" not in result["data"] or len(result["data"]["boards"]) == 0:
-            return {"exists": False, "matches": [], "error": "API error"}
+        if error:
+            result['error'] = error
+            return result
         
-        board = result["data"]["boards"][0]
+        if not projects:
+            result['error'] = "No projects found to compare against"
+            return result
+        
+        # Find similar projects
         matches = []
+        for project in projects:
+            project_id = project["id"]
+            project_name_value = project["name"]
+            
+            # Extract the project title from column values
+            project_title = project_name_value  # Default to name
+            for col in project.get("column_values", []):
+                if col.get("id") == "text3__1" and col.get("text"):
+                    project_title = col.get("text")
+                    break
+            
+            # Calculate similarity with both name and title
+            name_ratio = SequenceMatcher(None, project_name.lower(), project_name_value.lower()).ratio()
+            title_ratio = SequenceMatcher(None, project_name.lower(), project_title.lower()).ratio() if project_title else 0
+            best_ratio = max(name_ratio, title_ratio)
+            
+            if best_ratio >= similarity_threshold:
+                matches.append({
+                    'id': project_id,
+                    'name': project_name_value,
+                    'title': project_title,
+                    'similarity': best_ratio
+                })
         
-        # Find items with similar names
-        if "items_page" in board and "items" in board["items_page"]:
-            for item in board["items_page"]["items"]:
-                # Check name similarity
-                ratio = SequenceMatcher(None, project_name.lower(), item["name"].lower()).ratio()
-                
-                # Also check text3__1 column (Project Name) if available
-                project_title = item["name"]  # Default to name
-                for col in item.get("column_values", []):
-                    if col.get("id") == "text3__1" and col.get("text"):
-                        project_title = col.get("text")
-                        break
-                
-                # Use the higher similarity score
-                title_ratio = SequenceMatcher(None, project_name.lower(), project_title.lower()).ratio() if project_title else 0
-                best_ratio = max(ratio, title_ratio)
-                
-                if best_ratio > 0.6:  # Threshold for considering a match
-                    matches.append({
-                        "id": item["id"],
-                        "name": item["name"],
-                        "title": project_title,
-                        "similarity": best_ratio
-                    })
-        
-        # Sort matches by similarity
-        matches.sort(key=lambda x: x["similarity"], reverse=True)
+        # Sort matches by similarity score (highest first)
+        matches = sorted(matches, key=lambda x: x['similarity'], reverse=True)
         
         # Limit to top 5 matches
         matches = matches[:5]
         
-        return {
-            "exists": len(matches) > 0,
-            "matches": matches
-        }
+        # Update result dictionary
+        result['matches'] = matches
+        
+        if matches:
+            best_match = matches[0]
+            result['exists'] = True
+            result['type'] = 'existing'
+            result['best_match'] = best_match
+            result['similarity_score'] = best_match['similarity']
+        
+        return result
     
     def get_project_by_id(self, project_id):
         """
