@@ -126,12 +126,5 @@ def extract_parameters_from_monday_project(project_details):
                 elif col.get('__typename') == "MirrorValue" and col.get('display_value'):
                     params[param_name] = col.get('display_value')
         
-        # Special handling for certain parameters like Target U-Value that might come from different sources
-        # From the Postman response, we can see mirror034__1 is actually "% Wasteage" not "Target U-Value"
-        # Let's map it correctly
-        for col in latest_subitem.get('column_values', []):
-            if col.get('id') == "mirror034__1" and (col.get('text') or (col.get('__typename') == "MirrorValue" and col.get('display_value'))):
-                value = col.get('text') if col.get('text') else col.get('display_value')
-                params["Target U-Value"] = value
-    
+        
     return params 

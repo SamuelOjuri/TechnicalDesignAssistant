@@ -4,17 +4,35 @@ export interface ParameterFormatting {
   className?: string;
 }
 
+export function cleanValue(value: string): string {
+  if (!value) return value;
+  
+  // Remove JSON-like formatting artifacts
+  return value
+    // Remove leading quotes, colons
+    .replace(/^["':]\s*/, '')
+    // Remove trailing quotes, commas
+    .replace(/[",;]\s*$/, '')
+    // Remove remaining quotes
+    .replace(/"/g, '')
+    // Handle specific ": " pattern
+    .replace(/^:\s*/, '');
+}
+
 export function getParameterFormatting(key: string, value: string): ParameterFormatting {
-  // Default formatting
+  // Clean the value first
+  const cleanedValue = cleanValue(value);
+  
+  // Default formatting with cleaned value
   const defaultFormat: ParameterFormatting = {
-    label: value,
+    label: cleanedValue,
   };
 
   switch (key) {
     case "Post Code":
-      if (value.length <= 2 && value !== "Not found" && value !== "Not provided") {
+      if (cleanedValue.length <= 2 && cleanedValue !== "Not found" && cleanedValue !== "Not provided") {
         return {
-          label: value,
+          label: cleanedValue,
           tooltip: "Showing post code area (first part of postal code)",
           className: "font-semibold"
         };
@@ -33,9 +51,9 @@ export function getParameterFormatting(key: string, value: string): ParameterFor
         "XPS"
       ];
       
-      if (mappedValues.includes(value)) {
+      if (mappedValues.includes(cleanedValue)) {
         return {
-          label: value,
+          label: cleanedValue,
           tooltip: "Standardized insulation type from product details",
           className: "font-semibold text-blue-600"
         };
@@ -44,15 +62,15 @@ export function getParameterFormatting(key: string, value: string): ParameterFor
       
     case "Reason for Change":
       return {
-        label: value,
-        className: value === "Amendment" ? "font-semibold text-amber-600" : "font-semibold text-green-600"
+        label: cleanedValue,
+        className: cleanedValue === "Amendment" ? "font-semibold text-amber-600" : "font-semibold text-green-600"
       };
       
     case "Target U-Value":
     case "Target Min U-Value":
-      if (value !== "Not found") {
+      if (cleanedValue !== "Not found") {
         return {
-          label: value,
+          label: cleanedValue,
           className: "font-mono"
         };
       }
