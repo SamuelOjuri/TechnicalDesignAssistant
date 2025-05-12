@@ -64,7 +64,7 @@ const App: React.FC = () => {
         }
       }
       
-      setProcessingStage('Sending files to server...');
+      setProcessingStage('Sending files and attachments to server');
       
       const response = await fetch(`${API_BASE_URL}/api/process`, {
         method: 'POST',
