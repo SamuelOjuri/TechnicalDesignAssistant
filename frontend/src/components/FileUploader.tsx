@@ -54,6 +54,13 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       setFiles(e.dataTransfer.files);
     }
   };
+
+  const handleBrowseClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (inputRef.current && !isProcessing) {
+      inputRef.current.click();
+    }
+  };
   
   return (
     <Card className="shadow-md border-0">
@@ -71,7 +78,6 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
               onDragOver={handleDrag}
               onDragLeave={handleDrag}
               onDrop={handleDrop}
-              onClick={() => inputRef.current?.click()}
             >
               <input
                 ref={inputRef}
@@ -84,15 +90,17 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
                 disabled={isProcessing}
                 id="file-upload"
               />
-              <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                <span className="text-base font-medium text-gray-700">Drag & drop files or click to browse</span>
-                <span className="text-sm text-gray-500 mt-1">
-                  Accepts .eml, .msg, and .pdf files
-                </span>
-              </label>
+              <div onClick={handleBrowseClick} className="cursor-pointer">
+                <label className="flex flex-col items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  <span className="text-base font-medium text-gray-700">Drag & drop files or click to browse</span>
+                  <span className="text-sm text-gray-500 mt-1">
+                    Accepts .eml, .msg, and .pdf files
+                  </span>
+                </label>
+              </div>
               {files && !isProcessing && (
                 <div className="mt-4 text-left">
                   <p className="text-sm font-medium text-gray-700">Selected files:</p>
