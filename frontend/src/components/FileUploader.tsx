@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, DragEvent } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Spinner } from './ui/spinner';
@@ -17,6 +17,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
   processingStage 
 }) => {
   const [files, setFiles] = useState<FileList | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -30,6 +32,28 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       onUpload(files);
     }
   };
+
+  // Drag event handlers
+  const handleDrag = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      setFiles(e.dataTransfer.files);
+    }
+  };
   
   return (
     <Card className="shadow-md border-0">
@@ -41,8 +65,16 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       <CardContent className="p-6">
         <form onSubmit={handleSubmit} encType="multipart/form-data">
           <div className="mb-4">
-            <div className="border-2 border-dashed border-gray-300 rounded-md p-8 text-center bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
+            <div 
+              className={`border-2 border-dashed ${dragActive ? 'border-[#b82c25] bg-gray-100' : 'border-gray-300 bg-gray-50'} rounded-md p-8 text-center hover:bg-gray-100 transition-colors cursor-pointer`}
+              onDragEnter={handleDrag}
+              onDragOver={handleDrag}
+              onDragLeave={handleDrag}
+              onDrop={handleDrop}
+              onClick={() => inputRef.current?.click()}
+            >
               <input
+                ref={inputRef}
                 type="file"
                 name="files"
                 accept=".eml,.msg,.pdf"
