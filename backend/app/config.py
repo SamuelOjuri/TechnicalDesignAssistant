@@ -12,4 +12,4 @@ class Config:
     GEMINI_MODEL = "gemini-2.5-flash-preview-04-17"  # Current default model
     MONDAY_BOARD_ID = "1825117125"  # Board ID for Tapered Enquiry Maintenance
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', os.path.join(os.getcwd(), 'uploads'))
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+    MAX_CONTENT_LENGTH = 20 * 1024 * 1024  # 20MB max file size
