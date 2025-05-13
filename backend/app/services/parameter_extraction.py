@@ -21,6 +21,7 @@ def extract_parameters(all_text, enquiry_type=None):
             - Drawing Title (The Project Name, usually the project location).
             - Revision (Suffix of the drawing reference e.g. **.** - A. If multiple exist, use the one associated with the Drawing Reference identified above).
             - Date Received: (Date the email requesting the service *from TaperedPlus* was sent. In a forwarded email chain, this is the date the email was sent *to TaperedPlus*, not the date of the original email further down the chain).
+            - Hour Received: (Local time the email was sent *to TaperedPlus*. Use 24-hour format, e.g. 14:23).
             - Company: (Identify the company *directly requesting* technical drawings or services *from TaperedPlus*. In a forwarded email, this is the company of the person *sending the email to TaperedPlus*, NOT the company of the original sender further down the chain. Look for the company directly communicating with TaperedPlus).
             - Contact: (Identify the contact person *directly requesting* the job or drawings *from TaperedPlus*. In a forwarded email, this is the person *sending the email to TaperedPlus*, NOT the original sender further down the chain. Look for the individual directly communicating with TaperedPlus).
             - Reason for Change: ({reason_change_text})
@@ -49,7 +50,7 @@ def extract_parameters(all_text, enquiry_type=None):
     df_row = {}
     for p in [
         "Post Code", "Drawing Reference", "Drawing Title", "Revision", 
-        "Date Received", "Company", "Contact", "Reason for Change", 
+        "Date Received", "Hour Received", "Company", "Contact", "Reason for Change", 
         "Surveyor", "Target U-Value", "Target Min U-Value", 
         "Fall of Tapered", "Tapered Insulation", "Decking"
     ]:

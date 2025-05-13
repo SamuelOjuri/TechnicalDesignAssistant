@@ -3,6 +3,8 @@ from email.parser import BytesParser
 from email import policy
 import extract_msg
 from flask import current_app
+from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo   # Py-3.9+; use pytz if you're on ≤3.8
 
 from .pdf_extraction import process_pdf_with_gemini
 from .image_extraction import process_image_with_gemini
@@ -23,12 +25,25 @@ def process_eml_file(eml_file_path):
     with open(eml_file_path, 'rb') as f:
         msg = BytesParser(policy=policy.default).parse(f)
 
+    # Parse and local-ise the date
+    raw_date = msg.get('date', '')
+    local_date_str = raw_date            # fallback if parsing fails
+    if raw_date:
+        try:
+            dt = parsedate_to_datetime(raw_date)   # returns aware dt if hdr has TZ
+            if dt.tzinfo is None:                  # safety – treat naïve as UTC
+                dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+            dt_local = dt.astimezone(ZoneInfo("Europe/London"))
+            local_date_str = dt_local.strftime("%a, %d %b %Y %H:%M:%S %z")
+        except Exception:
+            pass  # keep original string on failure
+
     # Extract header fields
     header_info = (
         f"From: {msg.get('from', '')}\n"
         f"To: {msg.get('to', '')}\n"
         f"Subject: {msg.get('subject', '')}\n"
-        f"Date: {msg.get('date', '')}\n"
+        f"Date: {local_date_str}\n"
     )
     
     # Extract the email body
@@ -88,12 +103,27 @@ def process_msg_file(msg_file_path):
     msg = extract_msg.Message(msg_file_path)
     
     try:
+        # ---------------------------------------------------------
+        # Convert the Outlook MSG date to UK local time (BST/GMT)
+        # ---------------------------------------------------------
+        raw_date = msg.date or ""
+        local_date_str = raw_date                 # fallback
+        if raw_date:
+            try:
+                dt = parsedate_to_datetime(raw_date)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+                dt_local = dt.astimezone(ZoneInfo("Europe/London"))
+                local_date_str = dt_local.strftime("%a, %d %b %Y %H:%M:%S %z")
+            except Exception:
+                pass  # keep the original string on failure
+
         # Extract header fields
         header_info = (
             f"From: {msg.sender}\n"
             f"To: {msg.to}\n"
             f"Subject: {msg.subject}\n"
-            f"Date: {msg.date}\n"
+            f"Date: {local_date_str}\n"
         )
         
         # Extract the email body
