@@ -59,6 +59,7 @@ def extract_parameters_from_monday_project(project_details):
         "Drawing Title": "Not found",
         "Revision": "Not found",
         "Date Received": "Not found",
+        "Hour Received": "Not found",
         "Company": "Not found",
         "Contact": "Not found",
         "Reason for Change": "Amendment",  # Default for existing projects
