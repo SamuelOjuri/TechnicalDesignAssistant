@@ -127,5 +127,10 @@ def extract_parameters_from_monday_project(project_details):
                 elif col.get('__typename') == "MirrorValue" and col.get('display_value'):
                     params[param_name] = col.get('display_value')
         
-        
+    # After all extraction logic and just before the return statement
+    print("=== Parameters extracted from Monday.com ===")
+    for key, value in params.items():
+        print(f"  {key}: {value}")
+    print("============================================")
+    
     return params 

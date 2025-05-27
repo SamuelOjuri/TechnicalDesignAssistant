@@ -88,7 +88,7 @@ def extract_parameters(all_text, enquiry_type=None):
     if enquiry_type:
         df_row["Reason for Change"] = enquiry_type
 
-    print(f"Parameters extracted: {df_row}")
+    print(f"Parameters extracted from email: {df_row}")
     
     return df_row
 
