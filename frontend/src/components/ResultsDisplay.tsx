@@ -10,8 +10,13 @@ interface Parameter {
   [key: string]: string;
 }
 
+interface ParameterSource {
+  [key: string]: 'Email Content' | 'Monday CRM' | 'Business Rule';
+}
+
 interface ResultsDisplayProps {
   results: Parameter | null;
+  sources: ParameterSource | null;
   onReset: () => void;
   enquiryType: 'New Enquiry' | 'Amendment' | null;
   extractedText: string;
@@ -21,6 +26,7 @@ interface ResultsDisplayProps {
 
 export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ 
   results, 
+  sources,
   onReset,
   enquiryType,
   extractedText,
@@ -118,6 +124,7 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
             <TableRow>
               <TableHead>Parameter</TableHead>
               <TableHead>Value</TableHead>
+              <TableHead>Source</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -141,6 +148,9 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
                     ) : (
                       <span className={formatting.className}>{formatting.label}</span>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    {sources?.[key] ?? ''}
                   </TableCell>
                 </TableRow>
               );

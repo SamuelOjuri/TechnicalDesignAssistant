@@ -23,6 +23,8 @@ def chat():
     message = data['message']
     params = data.get('params', {})
     extracted_text = data.get('extractedText', '')
+    param_sources = data.get('paramSources', {})
+    enquiry_type = data.get('enquiryType', None)
     
     # Add debug logging here too
     print(f"Route received extracted_text: {extracted_text[:100]}...")
@@ -38,7 +40,9 @@ def chat():
     response = generate_chat_response(
         message=message,
         params=params,
-        extracted_text=extracted_text
+        extracted_text=extracted_text,
+        param_sources=param_sources,
+        enquiry_type=enquiry_type
     )
     
     return jsonify({'response': response}) 

@@ -17,10 +17,19 @@ interface Parameter {
   [key: string]: string;
 }
 
+// Add constants for better maintainability
+const TAPEREDPLUS_ASSIGNMENT_TEXT = "To be assigned by TaperedPlus";
+
+// NEW – keep track of where each value was taken from
+interface ParameterSource {
+  [key: string]: 'Email Content' | 'Monday CRM' | 'Business Rule';
+}
+
 const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractedParams, setExtractedParams] = useState<Parameter | null>(null);
   const [extractedText, setExtractedText] = useState<string | null>(null);
+  const [emailParams, setEmailParams] = useState<Parameter | null>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [showMondaySearch, setShowMondaySearch] = useState(false);
   const [enquiryType, setEnquiryType] = useState<'New Enquiry' | 'Amendment' | null>(null);
@@ -28,6 +37,59 @@ const App: React.FC = () => {
   const [currentFile, setCurrentFile] = useState<string | null>(null);
   const [processingStage, setProcessingStage] = useState<string | null>(null);
   const [chatResetTrigger, setChatResetTrigger] = useState<number>(0);
+  const [paramSources, setParamSources] = useState<ParameterSource | null>(null); // NEW
+
+  /**
+   * Combine Monday.com params with the ones parsed from the new email.
+   * Returns BOTH the merged values and a per-field source map.
+   */
+  const mergeParameters = (
+    monday: Parameter,
+    email: Parameter | null
+  ): { merged: Parameter; sources: ParameterSource } => {
+    // Default: everything comes from Monday.com
+    const merged: Parameter = { ...monday };
+    const sources: ParameterSource = Object.keys(monday).reduce(
+      (acc, k) => ({ ...acc, [k]: 'Monday CRM' }),
+      {}
+    );
+
+    if (!email) return { merged, sources };
+
+    const overridableParameters = [
+      "Date Received",
+      "Hour Received",
+      "Target U-Value",
+      "Target Min U-Value",
+      "Fall of Tapered",
+      "Tapered Insulation",
+      "Decking"
+    ];
+
+    const clean = (v?: string) => v?.trim().toLowerCase();
+    const isMissing = (v?: string) => {
+      if (!v) return true;
+      const val = v.trim().toLowerCase();
+      return (
+        val === "not found" ||
+        val === "not provided" ||
+        val === "to be assigned by taperedplus"
+      );
+    };
+
+    Object.entries(email).forEach(([key, value]) => {
+      if (
+        overridableParameters.includes(key) &&
+        !isMissing(value) &&
+        clean(value) !== clean(monday[key])
+      ) {
+        merged[key] = value;          // email wins
+        sources[key] = 'Email Content';
+      }
+    });
+
+    return { merged, sources };
+  };
 
   const handleFileUpload = async (files: FileList) => {
     setIsProcessing(true);
@@ -84,6 +146,7 @@ const App: React.FC = () => {
       
       // Store the extracted parameters but don't display them yet
       const initialParams = data.params;
+      setEmailParams(initialParams);          // Store email params for later use
       
       // If we have a project name, show the Monday.com search component
       if (data.projectName) {
@@ -92,7 +155,26 @@ const App: React.FC = () => {
       } else {
         // If no project name, treat as new enquiry immediately
         setEnquiryType('New Enquiry');
-        setExtractedParams(initialParams);
+        // Set default values for New Enquiry
+        const updatedParams = {
+          ...initialParams,
+          "Reason for Change": "New Enquiry",
+          "Drawing Reference": TAPEREDPLUS_ASSIGNMENT_TEXT,
+          "Revision": TAPEREDPLUS_ASSIGNMENT_TEXT
+        };
+        setExtractedParams(updatedParams);
+
+        // NEW – all values originate from email/content
+        const emailOnlySources = Object.keys(updatedParams).reduce(
+          (acc, k) => ({ 
+            ...acc, 
+            [k]: (k === "Drawing Reference" || k === "Revision") 
+              ? 'Business Rule' as const 
+              : 'Email Content' as const 
+          }),
+          {}
+        );
+        setParamSources(emailOnlySources);
       }
       
     } catch (error) {
@@ -123,11 +205,16 @@ const App: React.FC = () => {
         const data = await response.json();
         if (data && data.params) {
           // Make sure "Reason for Change" is set to "Amendment"
-          const updatedParams = {
+          const mondayParams = {
             ...data.params,
             "Reason for Change": "Amendment"
           };
-          setExtractedParams(updatedParams);
+          
+          const { merged: finalParams, sources: finalSources } =
+            mergeParameters(mondayParams, emailParams);
+          
+          setExtractedParams(finalParams);
+          setParamSources(finalSources);          // NEW
           
           // Hide the Monday search component after we've loaded the data
           setShowMondaySearch(false);
@@ -166,13 +253,27 @@ const App: React.FC = () => {
         throw new Error('Failed to process text');
       })
       .then(data => {
-        // Make sure "Reason for Change" is set to "New Enquiry"
+        // Make sure default values are set for New Enquiry
         const updatedParams = {
           ...data.params,
-          "Reason for Change": "New Enquiry"
+          "Reason for Change": "New Enquiry",
+          "Drawing Reference": TAPEREDPLUS_ASSIGNMENT_TEXT,
+          "Revision": TAPEREDPLUS_ASSIGNMENT_TEXT
         };
         setExtractedParams(updatedParams);
         setShowMondaySearch(false); // Hide search component
+
+        // NEW – all values originate from email/content
+        const emailOnlySources = Object.keys(updatedParams).reduce(
+          (acc, k) => ({ 
+            ...acc, 
+            [k]: (k === "Drawing Reference" || k === "Revision") 
+              ? 'Business Rule' as const 
+              : 'Email Content' as const 
+          }),
+          {}
+        );
+        setParamSources(emailOnlySources);
       })
       .catch(error => {
         console.error('Error:', error);
@@ -200,7 +301,9 @@ const App: React.FC = () => {
         body: JSON.stringify({
           message,
           params: extractedParams,
-          extractedText,  
+          extractedText,
+          paramSources,
+          enquiryType,
         }),
       });
       
@@ -219,6 +322,8 @@ const App: React.FC = () => {
   const resetApp = () => {
     setExtractedParams(null);
     setExtractedText(null);
+    setEmailParams(null);
+    setParamSources(null);             // NEW
     setProjectName(null);
     setShowMondaySearch(false);
     setEnquiryType(null);
@@ -295,6 +400,7 @@ const App: React.FC = () => {
           <div className="section-container">
             <ResultsDisplay 
               results={extractedParams} 
+              sources={paramSources}
               onReset={resetApp}
               enquiryType={enquiryType}
               extractedText={extractedText ?? ''}
