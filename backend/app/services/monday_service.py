@@ -54,6 +54,7 @@ def extract_parameters_from_monday_project(project_details):
     """
     # Initialize parameters with default values
     params = {
+        "Email Subject": "Not found",
         "Post Code": "Not found",
         "Drawing Reference": "Not found",
         "Drawing Title": "Not found",

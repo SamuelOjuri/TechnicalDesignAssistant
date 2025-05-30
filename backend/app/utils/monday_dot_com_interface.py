@@ -424,4 +424,182 @@ class MondayDotComInterface:
                 return None
         except Exception as e:
             print(f"Exception in send_query_to_monday: {e}")
-            return None 
+            return None
+
+    def get_board_columns(self, board_id):
+        """
+        Get all columns for a board.
+        
+        Args:
+            board_id: ID of the board
+            
+        Returns:
+            list: Column information
+        """
+        query = """
+        query ($boardId: ID!) {
+            boards(ids: [$boardId]) {
+                columns {
+                    id
+                    title
+                    type
+                }
+            }
+        }
+        """
+        
+        variables = {"boardId": board_id}
+        result = self.execute_query(query, variables)
+        
+        if result and "data" in result and "boards" in result["data"]:
+            return result["data"]["boards"][0]["columns"]
+        
+        return []
+
+    def search_items_by_name_prefix(self, board_id, name_prefix):
+        """
+        Search for items in a board where the name starts with a specific prefix.
+        
+        Args:
+            board_id: ID of the board to search in
+            name_prefix: The prefix to search for (e.g., "16771")
+            
+        Returns:
+            tuple: (list of matching items, error_message)
+        """
+        query = """
+        query ($boardId: ID!) {
+            boards(ids: [$boardId]) {
+                items_page(limit: 500) {
+                    items {
+                        id
+                        name
+                    }
+                }
+            }
+        }
+        """
+        
+        variables = {"boardId": int(board_id)}
+        result = self.execute_query(query, variables)
+        
+        if not result or "data" not in result:
+            return None, "Failed to fetch items from board"
+        
+        try:
+            items = result["data"]["boards"][0]["items_page"]["items"]
+            
+            # Filter items where name starts with the prefix
+            matching_items = []
+            for item in items:
+                if item["name"].startswith(str(name_prefix)):
+                    matching_items.append({
+                        "id": item["id"],
+                        "name": item["name"]
+                    })
+            
+            return matching_items, None
+            
+        except (KeyError, IndexError) as e:
+            return None, f"Error parsing response: {str(e)}"
+
+    def search_item_by_name_query(self, board_id, search_term):
+        """
+        Search for items using Monday.com's query_params search.
+        
+        Args:
+            board_id: ID of the board to search in
+            search_term: The term to search for
+            
+        Returns:
+            tuple: (list of matching items, error_message)
+        """
+        query = """
+        query ($boardId: ID!, $searchTerm: String!) {
+            boards(ids: [$boardId]) {
+                items_page(
+                    query_params: {
+                        rules: [{
+                            column_id: "name",
+                            compare_value: [$searchTerm],
+                            operator: any_of
+                        }]
+                    }
+                ) {
+                    items {
+                        id
+                        name
+                    }
+                }
+            }
+        }
+        """
+        
+        variables = {
+            "boardId": int(board_id),
+            "searchTerm": str(search_term)
+        }
+        
+        result = self.execute_query(query, variables)
+        
+        if not result or "data" not in result:
+            return None, "Failed to fetch items from board"
+        
+        try:
+            items = result["data"]["boards"][0]["items_page"]["items"]
+            
+            # Filter for exact matches only (since any_of might return partial matches)
+            exact_matches = []
+            for item in items:
+                if item["name"] == str(search_term):
+                    exact_matches.append({
+                        "id": item["id"],
+                        "name": item["name"]
+                    })
+            
+            if exact_matches:
+                return exact_matches, None
+            else:
+                return None, f"No item found with name '{search_term}'"
+            
+        except (KeyError, IndexError) as e:
+            return None, f"Error parsing response: {str(e)}"
+
+    # --- NEW METHOD (exact-name search that uses query_params) -------
+    def get_item_id_by_exact_name(self, board_id: int, item_name: str):
+        """
+        Return the item id whose *name* exactly matches `item_name`
+        on `board_id`.  None if not found.
+        """
+        # Monday.com's compare_value doesn't accept variables, so we inline the value
+        query = f"""
+        query {{
+          boards(ids: [{int(board_id)}]) {{
+            items_page(
+              query_params: {{
+                rules: [{{
+                  column_id: "name",
+                  compare_value: ["{str(item_name)}"],
+                  operator: any_of
+                }}]
+              }},
+              limit: 50
+            ) {{
+              items {{ id name }}
+            }}
+          }}
+        }}
+        """
+        
+        resp = self.execute_query(query)  # No variables needed
+        
+        if (
+            resp and
+            "data" in resp and
+            resp["data"]["boards"] and
+            resp["data"]["boards"][0]["items_page"]["items"]
+        ):
+            for itm in resp["data"]["boards"][0]["items_page"]["items"]:
+                if itm["name"] == item_name:
+                    return itm["id"]
+        return None 

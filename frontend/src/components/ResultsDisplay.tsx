@@ -22,6 +22,7 @@ interface ResultsDisplayProps {
   extractedText: string;
   isLoading?: boolean;
   apiBaseUrl: string;
+  onShowValidator?: () => void;
 }
 
 export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ 
@@ -31,7 +32,8 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
   enquiryType,
   extractedText,
   isLoading = false,
-  apiBaseUrl
+  apiBaseUrl,
+  onShowValidator
 }) => {
   if (isLoading) {
     return (
@@ -157,8 +159,11 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
             })}
           </TableBody>
         </Table>
-        <div className="mt-4 flex justify-between">
-          <Button variant="tapered" size="default" onClick={downloadExcel}>Download as Excel</Button>
+        <div className="mt-4 flex justify-between items-center">
+          <Button variant="tapered" size="default" onClick={downloadExcel}>
+            Download as Excel
+          </Button>
+          
           <Button 
             variant="outline" 
             size="default" 
@@ -170,6 +175,16 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
             </svg>
             Process New Files
           </Button>
+
+          {onShowValidator && (
+            <Button 
+              variant="tapered" 
+              size="default" 
+              onClick={onShowValidator}
+            >
+              Create Monday CRM Item
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
