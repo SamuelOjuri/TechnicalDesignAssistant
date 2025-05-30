@@ -5,6 +5,7 @@ import { ResultsDisplay } from './components/ResultsDisplay';
 import { ChatInterface } from './components/ChatInterface';
 import { MondayProjectSearch } from './components/MondayProjectSearch';
 import { Button } from './components/ui/button';
+import { ParameterValidator } from './components/ParameterValidator';
 //import { Alert, AlertTitle, AlertDescription } from './components/ui/alert';
 
 /**
@@ -38,6 +39,7 @@ const App: React.FC = () => {
   const [processingStage, setProcessingStage] = useState<string | null>(null);
   const [chatResetTrigger, setChatResetTrigger] = useState<number>(0);
   const [paramSources, setParamSources] = useState<ParameterSource | null>(null); // NEW
+  const [showParameterValidator, setShowParameterValidator] = useState(false);
 
   /**
    * Combine Monday.com params with the ones parsed from the new email.
@@ -57,6 +59,7 @@ const App: React.FC = () => {
     if (!email) return { merged, sources };
 
     const overridableParameters = [
+      "Email Subject",
       "Date Received",
       "Hour Received",
       "Target U-Value",
@@ -78,13 +81,21 @@ const App: React.FC = () => {
     };
 
     Object.entries(email).forEach(([key, value]) => {
-      if (
-        overridableParameters.includes(key) &&
-        !isMissing(value) &&
-        clean(value) !== clean(monday[key])
-      ) {
-        merged[key] = value;          // email wins
-        sources[key] = 'Email Content';
+      if (overridableParameters.includes(key)) {
+        // Special handling for Email Subject - always include if available from email
+        if (key === "Email Subject" && !isMissing(value)) {
+          merged[key] = value;
+          sources[key] = 'Email Content';
+        }
+        // For other parameters, use existing logic
+        else if (
+          key !== "Email Subject" &&
+          !isMissing(value) &&
+          clean(value) !== clean(monday[key])
+        ) {
+          merged[key] = value;          // email wins
+          sources[key] = 'Email Content';
+        }
       }
     });
 
@@ -319,6 +330,10 @@ const App: React.FC = () => {
     }
   };
 
+  const handleShowValidator = () => {
+    setShowParameterValidator(true);
+  };
+
   const resetApp = () => {
     setExtractedParams(null);
     setExtractedText(null);
@@ -327,6 +342,7 @@ const App: React.FC = () => {
     setProjectName(null);
     setShowMondaySearch(false);
     setEnquiryType(null);
+    setShowParameterValidator(false);
     
     // Clear file selection - we need to find the file input element and reset it
     const fileInput = document.querySelector('input[type="file"]');
@@ -406,8 +422,22 @@ const App: React.FC = () => {
               extractedText={extractedText ?? ''}
               isLoading={isLoadingResults}
               apiBaseUrl={API_BASE_URL}
+              onShowValidator={handleShowValidator}
             />
           </div>
+          
+          {showParameterValidator && extractedParams && (
+            <div className="section-container">
+              <ParameterValidator
+                extractedParams={extractedParams}
+                enquiryType={enquiryType}
+                apiBaseUrl={API_BASE_URL}
+                onSuccess={() => {
+                  // Optional: Handle success, maybe show a success message
+                }}
+              />
+            </div>
+          )}
           
           <div className="section-container">
             <ChatInterface 

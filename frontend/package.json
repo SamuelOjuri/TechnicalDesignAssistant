@@ -60,5 +60,5 @@
     "tailwindcss-animate": "^1.0.7",
     "tw-animate-css": "^1.2.8"
   },
-  "proxy": "http://192.168.60.222:5000"
+  "proxy": "http://192.168.0.198:5000"
 }

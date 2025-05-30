@@ -16,6 +16,7 @@ def extract_parameters(all_text, enquiry_type=None):
     """
     # Define the base query template
     query = """Extract the following design parameters from the documents for a TaperedPlus technical drawing request: 
+            - Email Subject: (The subject line of the email requesting the service from TaperedPlus).
             - Post Code of Project Location: (Mostly found in the title block of the drawing attached to emails. Ignore the postcode of any company office address or sender/recipient address and use the post code of the project location only, otherwise state 'Not provided').
             - Drawing Reference: (TaperedPlus Reference Number e.g. TP*****_**.** - *. Look for references associated with TaperedPlus specifically. If multiple exist, prioritize the latest one mentioned in the context of the request *to* TaperedPlus).
             - Drawing Title (The Project Name, usually the project location).
@@ -49,7 +50,7 @@ def extract_parameters(all_text, enquiry_type=None):
     # Parse the response into structured data
     df_row = {}
     for p in [
-        "Post Code", "Drawing Reference", "Drawing Title", "Revision", 
+        "Email Subject", "Post Code", "Drawing Reference", "Drawing Title", "Revision", 
         "Date Received", "Hour Received", "Company", "Contact", "Reason for Change", 
         "Surveyor", "Target U-Value", "Target Min U-Value", 
         "Fall of Tapered", "Tapered Insulation", "Decking"
