@@ -19,15 +19,12 @@ interface SearchResults {
 }
 
 interface MondayProjectSearchProps {
-  /** Base URL of the backend API (empty string during local dev) */
-  apiBaseUrl: string;
   projectName: string | null;
   onProjectSelected: (projectId: string | null) => void;
   onContinueAsNew: () => void;
 }
 
 export const MondayProjectSearch: React.FC<MondayProjectSearchProps> = ({ 
-  apiBaseUrl,
   projectName, 
   onProjectSelected, 
   onContinueAsNew 
@@ -42,7 +39,7 @@ export const MondayProjectSearch: React.FC<MondayProjectSearchProps> = ({
     
     setIsSearching(true);
     try {
-      const response = await fetch(`${apiBaseUrl}/api/monday/search`, {
+      const response = await fetch('/api/monday/search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -139,7 +136,7 @@ export const MondayProjectSearch: React.FC<MondayProjectSearchProps> = ({
                       <RadioGroupItem value={match.id} id={`project-${match.id}`} className="mt-1" />
                       <div className="ml-3">
                         <Label htmlFor={`project-${match.id}`} className="text-base font-medium cursor-pointer">
-                          {match.title}
+                          {match.title} <span className="text-gray-600 font-normal">({match.name})</span>
                         </Label>
                         <p className="text-sm text-gray-500">
                           Similarity: {(match.similarity * 100).toFixed(1)}%

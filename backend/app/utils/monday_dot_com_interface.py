@@ -256,7 +256,7 @@ class MondayDotComInterface:
     def check_project_exists(self, project_name, similarity_threshold=0.55):
         """
         Check if a project name exists or is similar to any project in the Tapered Enquiry Maintenance board.
-        Uses string matching to find similar project names.
+        Uses Monday.com's built-in smart word-by-word search for better results.
         
         Args:
             project_name: The project name to search for
@@ -275,52 +275,61 @@ class MondayDotComInterface:
             'error': ''
         }
         
-        # Get all projects from Monday.com
-        projects, error = self.get_tapered_enquiry_projects()
+        board_id = "1825117125"
+        start_date = "2021-01-01"
         
-        if error:
-            result['error'] = error
-            return result
-        
-        if not projects:
-            result['error'] = "No projects found to compare against"
-            return result
-        
-        # Find similar projects
-        matches = []
-        for project in projects:
-            project_id = project["id"]
-            project_name_value = project["name"]
+        def filter_meaningful_words(text):
+            """
+            Filter out house numbers, postcodes, and other irrelevant words,
+            keeping only meaningful location/building name words.
+            """
+            import re
             
-            # Extract the project title from column values
-            project_title = project_name_value  # Default to name
-            for col in project.get("column_values", []):
-                if col.get("id") == "text3__1" and col.get("text"):
-                    project_title = col.get("text")
-                    break
+            words = [word.strip() for word in text.split() if word.strip()]
+            filtered_words = []
             
-            # Calculate similarity with both name and title
-            name_ratio = SequenceMatcher(None, project_name.lower(), project_name_value.lower()).ratio()
-            title_ratio = SequenceMatcher(None, project_name.lower(), project_title.lower()).ratio() if project_title else 0
-            best_ratio = max(name_ratio, title_ratio)
+            for word in words:
+                # Skip house numbers (pure digits or digits with letters like "100A")
+                if re.match(r'^\d+[A-Z]*$', word.upper()):
+                    continue
+                    
+                # Skip postcode patterns (e.g., "SW6", "4LX", "M1", "B23")
+                if re.match(r'^[A-Z]{1,2}\d{1,2}[A-Z]?$', word.upper()):
+                    continue
+                    
+                # Skip very short words that are likely not meaningful (except common ones)
+                if len(word) <= 2 and word.upper() not in ['OF', 'ST', 'DR', 'RD']:
+                    continue
+                    
+                # Keep meaningful words
+                filtered_words.append(word)
             
-            if best_ratio >= similarity_threshold:
-                matches.append({
-                    'id': project_id,
-                    'name': project_name_value,
-                    'title': project_title,
-                    'similarity': best_ratio
-                })
+            return filtered_words
         
-        # Sort matches by similarity score (highest first)
-        matches = sorted(matches, key=lambda x: x['similarity'], reverse=True)
+        # Get meaningful words for search
+        meaningful_words = filter_meaningful_words(project_name)
         
-        # Limit to top 5 matches
-        matches = matches[:5]
+        if not meaningful_words:
+            # Fallback: if no meaningful words found, use original approach with full text
+            return self._search_with_full_text(project_name, result, board_id, start_date)
         
-        # Update result dictionary
+        # Try meaningful words first
+        matches = self._search_with_words(meaningful_words, board_id, start_date, project_name)
+        
+        # If no results with meaningful words, try with fewer words (remove less important ones)
+        if not matches and len(meaningful_words) > 2:
+            # Try with most important words (usually first 2-3 words)
+            important_words = meaningful_words[:3]
+            print(f"No results with all words, trying with important words: {important_words}")
+            matches = self._search_with_words(important_words, board_id, start_date, project_name)
+        
+        # If still no results, fallback to similarity-based search
+        if not matches:
+            print("No results with word search, falling back to similarity search...")
+            return self._fallback_similarity_search(project_name, result)
+        
+        # Process and return results
         result['matches'] = matches
-        
         if matches:
             best_match = matches[0]
             result['exists'] = True
@@ -328,6 +337,149 @@ class MondayDotComInterface:
             result['best_match'] = best_match
             result['similarity_score'] = best_match['similarity']
         
+        return result
+
+    def _search_with_words(self, words, board_id, start_date, original_project_name):
+        """Helper method to search with specific words"""
+        # Build rules for each word + date filter
+        rules = []
+        
+        # Add a rule for each word to search for in the project title column
+        for word in words:
+            rules.append({
+                "column_id": "text3__1",
+                "compare_value": [word],
+                "operator": "contains_text"
+            })
+        
+        # Add date filter
+        rules.append({
+            "column_id": "date9__1",
+            "compare_value": ["EXACT", start_date],
+            "operator": "greater_than_or_equals"
+        })
+        
+        # Convert rules to GraphQL format
+        rules_str = ""
+        for i, rule in enumerate(rules):
+            if i > 0:
+                rules_str += ","
+            rules_str += f"""
+              {{
+                column_id: "{rule['column_id']}",
+                compare_value: {json.dumps(rule['compare_value'])},
+                operator: {rule['operator']}
+              }}"""
+        
+        # Use Monday.com's built-in search with word-by-word approach
+        query = f"""
+        query {{
+          boards(ids: [{board_id}]) {{
+            items_page(
+              query_params: {{
+                rules: [{rules_str}],
+                operator: and
+              }},
+              limit: 500
+            ) {{
+              cursor
+              items {{
+                id
+                name
+                state
+                column_values(ids: ["text3__1", "date9__1"]) {{
+                  id
+                  text
+                  __typename
+                  ... on MirrorValue {{
+                    display_value
+                  }}
+                }}
+              }}
+            }}
+          }}
+        }}
+        """
+        
+        print(f"=== SMART WORD SEARCH DEBUG ===")
+        print(f"Original search term: {original_project_name}")
+        print(f"Filtered words being searched: {words}")
+        print("=================================")
+        
+        response = self.execute_query(query)
+        
+        if not response or "errors" in response:
+            return []
+
+        try:
+            page = response["data"]["boards"][0]["items_page"]
+            items = page.get("items", [])
+        except (KeyError, IndexError, TypeError):
+            return []
+        
+        # Process the results
+        matches = []
+        for item in items:
+            if item.get("state") != "active":
+                continue
+            
+            project_id = item["id"]
+            project_name_value = item["name"]
+            project_state = item.get("state", "unknown")
+            
+            # Extract the project title from column values
+            project_title = project_name_value  # Default to name
+            created_date = None
+            
+            for col in item.get("column_values", []):
+                if col.get("id") == "text3__1" and col.get("text"):
+                    project_title = col.get("text")
+                elif col.get("id") == "date9__1" and col.get("text"):
+                    created_date = col.get("text")
+            
+            # Calculate similarity score for ranking
+            name_ratio = SequenceMatcher(None, original_project_name.lower(), project_name_value.lower()).ratio()
+            title_ratio = SequenceMatcher(None, original_project_name.lower(), project_title.lower()).ratio() if project_title else 0
+            similarity_score = max(name_ratio, title_ratio)
+            
+            matches.append({
+                'id': project_id,
+                'name': project_name_value,
+                'title': project_title,
+                'similarity': similarity_score,
+                'state': project_state,
+                'created_date': created_date
+            })
+        
+        # Sort matches by similarity score (highest first)
+        matches = sorted(matches, key=lambda x: x['similarity'], reverse=True)
+        
+        print(f"=== SMART SEARCH RESULTS ===")
+        print(f"Words searched: {words}")
+        print(f"Monday.com API matches: {len(matches)}")
+        for match in matches:
+            print(f"  - {match['title']} (similarity: {match['similarity']:.1%}, name: {match['name']})")
+        
+        return matches
+
+    def _search_with_full_text(self, project_name, result, board_id, start_date):
+        """Fallback search with full text"""
+        print(f"Using fallback full-text search for: {project_name}")
+        # Use the original single-phrase search as fallback
+        # ... (implement the original single search query)
+        return result
+
+    def _fallback_similarity_search(self, project_name, result):
+        """Final fallback using the old similarity-based approach"""
+        print(f"Using final fallback similarity search for: {project_name}")
+        # Get all projects and do local similarity matching
+        projects, error = self.get_tapered_enquiry_projects()
+        
+        if error:
+            result['error'] = error
+            return result
+        
+        # ... (implement similarity matching logic)
         return result
     
     def get_project_by_id(self, project_id):

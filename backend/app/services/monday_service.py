@@ -42,12 +42,13 @@ def get_project_details(project_id, board_id, monday_api_token):
     # Get project directly by ID instead of the two-step process
     return monday_interface.get_project_by_id(project_id)
 
-def extract_parameters_from_monday_project(project_details):
+def extract_parameters_from_monday_project(project_details, target_drawing_ref=None):
     """
     Extracts design parameters from a Monday.com project.
     
     Args:
         project_details: The project details from Monday.com
+        target_drawing_ref: Optional target drawing reference for specific extraction
         
     Returns:
         dict: A dictionary of extracted parameters
@@ -90,14 +91,71 @@ def extract_parameters_from_monday_project(project_details):
     
     # Check if we have subitems (revisions) with more detailed information
     if project_details.get('subitems') and len(project_details['subitems']) > 0:
-        # Use the most recent subitem (revision) for detailed information
-        # Sort by ID in descending order to get the most recent one
-        latest_subitem = sorted(project_details['subitems'], key=lambda x: x['id'], reverse=True)[0]
+        selected_subitem = None
         
-        # Extract Drawing Reference from subitem name
-        if '_' in latest_subitem['name']:
-            # The entire name (e.g., "16903_25.01 - A") should be used as Drawing Reference
-            params["Drawing Reference"] = latest_subitem['name']  # Use the full name
+        if target_drawing_ref:
+            # Try to find subitem matching the target drawing reference
+            for subitem in project_details['subitems']:
+                if subitem['name'] == target_drawing_ref:
+                    selected_subitem = subitem
+                    break
+        
+        # If no specific target or no match found, use latest revision logic
+        if not selected_subitem:
+            # Filter non-archived subitems
+            active_subitems = []
+            
+            for subitem in project_details['subitems']:
+                # Check status from mirror columns
+                status = None
+                for col in subitem.get('column_values', []):
+                    if col.get('id') == 'mirror11__1' and col.get('display_value'):
+                        status = col.get('display_value')
+                        break
+                
+                # Only include non-archived items
+                if status != "Archived":
+                    active_subitems.append(subitem)
+            
+            if active_subitems:
+                # Sort by version number first (highest), then by revision letter (highest)
+                def extract_version_and_revision(subitem_name):
+                    """
+                    Extract version number and revision letter from subitem name.
+                    Examples:
+                    - '16763_25.01 - A' -> (25.01, 'A')
+                    - '5327_19.01 - D' -> (19.01, 'D')
+                    - '9420_22.01 - B' -> (22.01, 'B')
+                    """
+                    import re
+                    # Match pattern: PROJECT_VERSION.SUBVERSION - LETTER
+                    match = re.search(r'_(\d+\.\d+)\s*-\s*([A-Z])', subitem_name)
+                    if match:
+                        version_str = match.group(1)  # e.g., "25.01"
+                        letter = match.group(2)       # e.g., "A"
+                        version_num = float(version_str)  # Convert to float for sorting
+                        return (version_num, letter)
+                    
+                    # Fallback: try to extract just the letter for older naming schemes
+                    letter_match = re.search(r'- ([A-Z])(?:\s|$|\()', subitem_name)
+                    if letter_match:
+                        return (0.0, letter_match.group(1))
+                    
+                    return (0.0, 'A')  # Default fallback
+                
+                # Sort by version number first (highest), then by revision letter (highest)
+                active_subitems.sort(
+                    key=lambda x: extract_version_and_revision(x['name']), 
+                    reverse=True
+                )
+                selected_subitem = active_subitems[0]  # Take highest version/revision
+            else:
+                # Fall back to highest ID if all are archived
+                selected_subitem = sorted(project_details['subitems'], key=lambda x: x['id'], reverse=True)[0]
+        
+        # Extract Drawing Reference from selected subitem name
+        if selected_subitem and '_' in selected_subitem['name']:
+            params["Drawing Reference"] = selected_subitem['name']
         
         # Map column IDs to parameter names for subitem values
         column_mappings = {
@@ -117,7 +175,7 @@ def extract_parameters_from_monday_project(project_details):
         }
         
         # Process each column value in the subitem
-        for col in latest_subitem.get('column_values', []):
+        for col in selected_subitem.get('column_values', []):
             col_id = col.get('id')
             if col_id in column_mappings:
                 param_name = column_mappings[col_id]
