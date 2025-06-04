@@ -19,12 +19,14 @@ interface SearchResults {
 }
 
 interface MondayProjectSearchProps {
+  apiBaseUrl: string;
   projectName: string | null;
   onProjectSelected: (projectId: string | null) => void;
   onContinueAsNew: () => void;
 }
 
 export const MondayProjectSearch: React.FC<MondayProjectSearchProps> = ({ 
+  apiBaseUrl, 
   projectName, 
   onProjectSelected, 
   onContinueAsNew 
@@ -39,7 +41,7 @@ export const MondayProjectSearch: React.FC<MondayProjectSearchProps> = ({
     
     setIsSearching(true);
     try {
-      const response = await fetch('/api/monday/search', {
+      const response = await fetch(`${apiBaseUrl}/api/monday/search`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
