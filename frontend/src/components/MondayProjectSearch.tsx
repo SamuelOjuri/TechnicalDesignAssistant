@@ -136,7 +136,7 @@ export const MondayProjectSearch: React.FC<MondayProjectSearchProps> = ({
                       <RadioGroupItem value={match.id} id={`project-${match.id}`} className="mt-1" />
                       <div className="ml-3">
                         <Label htmlFor={`project-${match.id}`} className="text-base font-medium cursor-pointer">
-                          {match.title}
+                          {match.title} <span className="text-gray-600 font-normal">({match.name})</span>
                         </Label>
                         <p className="text-sm text-gray-500">
                           Similarity: {(match.similarity * 100).toFixed(1)}%

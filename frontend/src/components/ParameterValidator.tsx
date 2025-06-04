@@ -6,25 +6,11 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Spinner } from './ui/spinner';
 import { MONDAY_COLUMN_MAPPING, MONDAY_BOARD_CONFIG } from '../lib/monday-columns';
 
-// Add date formatting functions
-const formatDateForDisplay = (dateString: string): string => {
-  if (!dateString) return '';
-  
-  // If already in YYYY-MM-DD format, convert to DD/MM/YYYY for display
-  const yyyyMmDdRegex = /^\d{4}-\d{2}-\d{2}$/;
-  if (yyyyMmDdRegex.test(dateString)) {
-    const [year, month, day] = dateString.split('-');
-    return `${day}/${month}/${year}`;
-  }
-  
-  return dateString;
-};
-
 const formatDateForMonday = (dateString: string): string => {
   if (!dateString) return '';
   
   // Parse DD/MM/YYYY or DD-MM-YYYY format
-  const ddMmYyyyRegex = /^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/;
+  const ddMmYyyyRegex = /^(\d{2})[/-](\d{2})[/-](\d{4})$/;
   const match = dateString.match(ddMmYyyyRegex);
   if (match) {
     const [, day, month, year] = match;
@@ -46,14 +32,14 @@ const cleanExtractedValue = (value: string): string => {
   
   // Remove patterns like ': value' or '": "value",' to just 'value'
   // First try to match pattern with quotes around value
-  const quotedMatch = value.match(/["\']?\s*:\s*["\']([^"\']+)["\']/)
+  const quotedMatch = value.match(/["']?\s*:\s*["']([^"']+)["']/);
   if (quotedMatch) {
     return quotedMatch[1].trim();
   }
   
   // Then try to match pattern where colon appears at the start (after optional quotes/whitespace)
   // But not if it looks like a time format (digits:digits)
-  const colonMatch = value.match(/^["\']?\s*:\s*(.+?)[\s,]*$/)
+  const colonMatch = value.match(/^["']?\s*:\s*(.+?)[\s,]*$/);
   if (colonMatch && !value.match(/^\d+:\d+/)) {
     return colonMatch[1].trim();
   }

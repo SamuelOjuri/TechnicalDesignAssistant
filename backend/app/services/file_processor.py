@@ -47,14 +47,14 @@ def process_files(files):
         try:
             if filename.lower().endswith(".eml"):
                 header, body, att, inline = process_eml_file(path)
-                email_text = header + "\n" + body
+                email_text = (header or "") + "\n" + (body or "")
                 if email_data is None:
                     email_data = {"email_text": email_text, "attachments_data": att}
                 extracted = extract_text_from_email(email_text, att, inline)
                 all_text += f"\n\nEMAIL FILE: {filename}\n{extracted}\n{'='*50}\n"
             elif filename.lower().endswith(".msg"):
                 header, body, att, inline = process_msg_file(path)
-                email_text = header + "\n" + body
+                email_text = (header or "") + "\n" + (body or "")
                 if email_data is None:
                     email_data = {"email_text": email_text, "attachments_data": att}
                 extracted = extract_text_from_email(email_text, att, inline)
