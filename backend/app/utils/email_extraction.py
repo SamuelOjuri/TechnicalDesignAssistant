@@ -110,12 +110,30 @@ def process_msg_file(msg_file_path):
         local_date_str = raw_date                 # fallback
         if raw_date:
             try:
-                dt = parsedate_to_datetime(raw_date)
+                # Handle different date formats from extract_msg
+                if isinstance(raw_date, str):
+                    # If it's a string, try to parse with parsedate_to_datetime
+                    dt = parsedate_to_datetime(raw_date)
+                else:
+                    # If it's already a datetime object, use it directly
+                    dt = raw_date
+                
+                # Ensure timezone awareness
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+                
+                # Convert to UK local time
                 dt_local = dt.astimezone(ZoneInfo("Europe/London"))
                 local_date_str = dt_local.strftime("%a, %d %b %Y %H:%M:%S %z")
-            except Exception:
+                
+                # Debug logging for server troubleshooting
+                print(f"MSG Date Debug - Raw: {raw_date} (type: {type(raw_date)})")
+                print(f"MSG Date Debug - Parsed: {dt}")
+                print(f"MSG Date Debug - Local: {dt_local}")
+                print(f"MSG Date Debug - Formatted: {local_date_str}")
+                
+            except Exception as e:
+                print(f"MSG Date parsing error: {e}")
                 pass  # keep the original string on failure
 
         # Extract header fields
