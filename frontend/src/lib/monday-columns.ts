@@ -2,7 +2,8 @@ export const MONDAY_COLUMN_MAPPING = {
   'Date Received': 'Date Received',
   'Hour Received': 'Hour Received', 
   'Post Code': 'Zip Code',
-  'Drawing Reference': 'TP Ref'
+  'Drawing Reference': 'TP Ref',
+  'New Enq / Amend': 'New Enq / Amend'
 } as const;
 
 export const MONDAY_BOARD_CONFIG = {

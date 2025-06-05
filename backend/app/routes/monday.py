@@ -238,6 +238,36 @@ def format_hour_for_monday(time_string):
     print(f"Warning: Could not parse time '{time_string}'")
     return None
 
+def format_dropdown_for_monday(value, settings_str):
+    """
+    Convert dropdown value to Monday.com format.
+    Monday.com expects dropdown columns as {"ids": [option_id]} format.
+    
+    Args:
+        value: The text value to convert (e.g., "New Enquiry", "Amendment")
+        settings_str: The JSON settings string from the column definition
+        
+    Returns:
+        dict: Formatted value for Monday.com API or None if not found
+    """
+    if not value or not settings_str:
+        return None
+    
+    try:
+        settings = json.loads(settings_str)
+        labels = settings.get("labels", [])
+        
+        # Find the matching label by name
+        for label in labels:
+            if label.get("name") == value:
+                return {"ids": [label.get("id")]}
+        
+        print(f"Warning: Could not find dropdown option '{value}' in settings")
+        return None
+    except json.JSONDecodeError:
+        print(f"Warning: Could not parse dropdown settings: {settings_str}")
+        return None
+
 @monday_bp.route('/create-item', methods=['POST'])
 def create_monday_item():
     """
@@ -361,6 +391,13 @@ def create_monday_item():
                 hr = format_hour_for_monday(cleaned)
                 if hr:
                     column_values_by_id[column_id] = hr
+                continue
+
+            # ---------- dropdown column --------------------------------
+            if column_type == "dropdown" and cleaned:
+                dropdown_value = format_dropdown_for_monday(cleaned, id_to_settings[column_id])
+                if dropdown_value:
+                    column_values_by_id[column_id] = dropdown_value
                 continue
 
             # ---------- every other column -----------------------------
