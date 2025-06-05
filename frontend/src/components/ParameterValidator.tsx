@@ -99,6 +99,14 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
         value: cleanExtractedValue(extractedParams['Post Code'] || ''),
         mondayColumnTitle: MONDAY_COLUMN_MAPPING['Post Code'],
         editable: true
+      },
+      // Add the enquiry type parameter
+      {
+        key: 'New Enq / Amend',
+        displayName: 'New Enq / Amend',
+        value: enquiryType || '',
+        mondayColumnTitle: MONDAY_COLUMN_MAPPING['New Enq / Amend'],
+        editable: false // Not editable since it's based on user selection
       }
     ];
 
