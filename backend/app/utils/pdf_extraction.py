@@ -29,7 +29,7 @@ def process_pdf_with_gemini(pdf_content, filename):
             pdf_data = f.read()
             
             # Use retry function instead of direct API call
-            model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash-preview-04-17")
+            model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash-preview-05-20")
             response = gemini_api_with_retry(
                 model=model,
                 contents=[

@@ -80,7 +80,7 @@ def query_llm(context, query):
         """
     
     # Get response from Gemini
-    model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash-preview-04-17")
+    model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash-preview-05-20")
     response = gemini_api_with_retry(model, prompt)
     
     return response.text 

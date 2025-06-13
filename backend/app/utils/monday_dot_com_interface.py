@@ -280,31 +280,62 @@ class MondayDotComInterface:
         
         def filter_meaningful_words(text):
             """
-            Filter out house numbers, postcodes, and other irrelevant words,
-            keeping only meaningful location/building name words.
+            Return a list of location / building words that are worth
+            querying on Monday.com. Filters out punctuation, English stop words,
+            and other non-meaningful tokens.
             """
-            import re
-            
-            words = [word.strip() for word in text.split() if word.strip()]
-            filtered_words = []
-            
-            for word in words:
-                # Skip house numbers (pure digits or digits with letters like "100A")
-                if re.match(r'^\d+[A-Z]*$', word.upper()):
+            import re, string
+
+            # English stop words (based on common lists like scikit-learn's)
+            ENGLISH_STOP_WORDS = {
+                # Generic English stop words
+                'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'by', 'for', 
+                'from', 'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 
+                'the', 'to', 'was', 'were', 'will', 'with', 'the', 'this', 'but', 
+                'they', 'have', 'had', 'what', 'said', 'each', 'which', 'she', 
+                'do', 'how', 'their', 'if', 'up', 'out', 'many', 'then', 'them', 
+                'these', 'so', 'some', 'her', 'would', 'make', 'like', 'into', 
+                'him', 'time', 'two', 'more', 'go', 'no', 'way', 'could', 'my', 
+                'than', 'been', 'call', 'who', 'sit', 'now', 'find', 'down', 
+                'day', 'did', 'get', 'come', 'made', 'may', 'part'
+                
+            }
+
+            # 1) replace punctuation-runs with a single space
+            cleaned = re.sub(rf"[{re.escape(string.punctuation)}]+", " ", text)
+            # 2) split again on whitespace
+            raw_tokens = [t.strip() for t in cleaned.split() if t.strip()]
+
+            meaningful = []
+            for word in raw_tokens:
+                upper = word.upper()
+                lower = word.lower()
+
+                # Skip pure house numbers (digits optionally followed by a letter)
+                if re.fullmatch(r"\d+[A-Z]?", upper):
                     continue
-                    
-                # Skip postcode patterns (e.g., "SW6", "4LX", "M1", "B23")
-                if re.match(r'^[A-Z]{1,2}\d{1,2}[A-Z]?$', word.upper()):
+
+                # Skip UK postcode parts (both formats)
+                # First part: 1-2 letters + 1-2 digits (SW6, M1, B23)
+                # Second part: 1 digit + 2 letters (4LX, 9QU, 1DN)
+                if re.fullmatch(r"[A-Z]{1,2}\d{1,2}", upper) or re.fullmatch(r"\d[A-Z]{2}", upper):
                     continue
-                    
-                # Skip very short words that are likely not meaningful (except common ones)
-                if len(word) <= 2 and word.upper() not in ['OF', 'ST', 'DR', 'RD']:
+
+                # Skip drawing references (letter(s) + numbers)
+                if re.fullmatch(r"[A-Z]+\d+", upper):
                     continue
-                    
-                # Keep meaningful words
-                filtered_words.append(word)
-            
-            return filtered_words
+
+                # Skip English stop words (O(1) lookup)
+                if lower in ENGLISH_STOP_WORDS:
+                    continue
+
+                # Skip very short tokens (len ≤ 2) unless whitelisted
+                if len(word) <= 2 and upper not in {"OF", "ST", "DR", "RD"}:
+                    continue
+
+                meaningful.append(word)
+
+            return meaningful
         
         # Get meaningful words for search
         meaningful_words = filter_meaningful_words(project_name)
@@ -314,19 +345,12 @@ class MondayDotComInterface:
             return self._search_with_full_text(project_name, result, board_id, start_date)
         
         # Try meaningful words first
-        matches = self._search_with_words(meaningful_words, board_id, start_date, project_name)
-        
-        # If no results with meaningful words, try with fewer words (remove less important ones)
-        if not matches and len(meaningful_words) > 2:
-            # Try with most important words (usually first 2-3 words)
-            important_words = meaningful_words[:3]
-            print(f"No results with all words, trying with important words: {important_words}")
-            matches = self._search_with_words(important_words, board_id, start_date, project_name)
+        matches = self._progressive_search(meaningful_words, board_id, start_date, project_name)
         
         # If still no results, fallback to similarity-based search
         if not matches:
             print("No results with word search, falling back to similarity search...")
-            return self._fallback_similarity_search(project_name, result)
+            return self._fallback_similarity_search(project_name, result, similarity_threshold)
         
         # Process and return results
         result['matches'] = matches
@@ -339,30 +363,124 @@ class MondayDotComInterface:
         
         return result
 
-    def _search_with_words(self, words, board_id, start_date, original_project_name):
-        """Helper method to search with specific words"""
+    # ------------------------------------------------------------------ #
+    #  NEW helper: batch-query how many hits each token returns           #
+    # ------------------------------------------------------------------ #
+    def _get_word_hit_counts(self, words, board_id):
+        """
+        Ask Monday.com once for each word's hit-count and return a
+        {word: count} mapping. Falls back to len(items) if total_items is
+        not provided by the API.
+        """
+        # Build one GraphQL query with aliases (w0, w1 …) so we need only
+        # ONE round-trip regardless of the token list length.
+        blocks = []
+        for idx, w in enumerate(words):
+            alias = f"w{idx}"
+            blocks.append(f"""
+            {alias}: boards(ids: [{board_id}]) {{
+              items_page(
+                query_params: {{
+                  rules: [{{
+                    column_id: "text3__1",
+                    compare_value: ["{w}"],
+                    operator: contains_text
+                  }}]
+                }},
+                limit: 50
+              ) {{
+                items {{ id }}
+              }}
+            }}""")
+        query = "query {" + "".join(blocks) + "}"
+
+        response = self.execute_query(query)
+        counts = {w: 0 for w in words}        # default 0 if anything goes wrong
+        try:
+            data = response["data"]
+            for idx, w in enumerate(words):
+                page = data[f"w{idx}"][0]["items_page"]
+                counts[w] = len(page.get("items", []))
+        except Exception:
+            # Graceful degradation – keep defaults
+            pass
+        return counts
+
+    # ------------------------------------------------------------------ #
+    #  Rank words from most-specific (fewest hits) to least              #
+    # ------------------------------------------------------------------ #
+    def _rank_words_by_specificity(self, words, board_id, start_date, original):
+        """
+        Order tokens using the batched hit counts. Only one API call.
+        """
+        counts = self._get_word_hit_counts(words, board_id)
+        ranked = sorted(words, key=lambda w: counts.get(w, 1_000_000))
+        if current_app and getattr(current_app, "debug", False):
+            print(f"Word specificity order (hits): "
+                  f"{[(w, counts[w]) for w in ranked]}")
+        return ranked
+
+    def _progressive_search(self, words, board_id, start_date, original):
+        # Step-0: order tokens from most to least specific
+        ordered = self._rank_words_by_specificity(words, board_id, start_date, original)
+
+        # 1) try *all* words first (strict AND)
+        hits = self._search_with_words(ordered, board_id, start_date, original)
+        if hits:
+            return hits
+
+        # 2) Relax progressively: drop the least-specific word each round
+        for i in range(len(ordered) - 1, 0, -1):
+            subset = ordered[:i]            # keep the i most-specific words
+            hits = self._search_with_words(subset, board_id, start_date, original)
+            if hits:
+                return hits
+
+        return []
+
+    # ------------------------------------------------------------------ #
+    #  SEARCH HELPERS                                                    #
+    # ------------------------------------------------------------------ #
+    def _search_with_words(
+        self,
+        words,
+        board_id,
+        start_date,
+        original_project_name,
+        *,
+        limit: int = 500,
+        include_columns: bool = True,
+    ):
+        """
+        Query Monday.com for items that match *all* tokens in `words`.
+
+        Args:
+            words (list[str])           : tokens to search for (AND logic).
+            board_id (str | int)        : Monday board id.
+            start_date (str)            : YYYY-MM-DD filter for Created column.
+            original_project_name (str) : used only for debug / similarity calc.
+            limit (int, optional)       : max records to ask Monday for (default 500).
+            include_columns (bool)      : when False the column_values block is
+                                          omitted to shrink the response payload.
+        """
         # Build rules for each word + date filter
         rules = []
-        
-        # Add a rule for each word to search for in the project title column
         for word in words:
             rules.append({
                 "column_id": "text3__1",
                 "compare_value": [word],
                 "operator": "contains_text"
             })
-        
-        # Add date filter
         rules.append({
             "column_id": "date9__1",
             "compare_value": ["EXACT", start_date],
             "operator": "greater_than_or_equals"
         })
-        
-        # Convert rules to GraphQL format
+
+        # Convert rules to GraphQL string
         rules_str = ""
         for i, rule in enumerate(rules):
-            if i > 0:
+            if i:
                 rules_str += ","
             rules_str += f"""
               {{
@@ -370,8 +488,26 @@ class MondayDotComInterface:
                 compare_value: {json.dumps(rule['compare_value'])},
                 operator: {rule['operator']}
               }}"""
-        
-        # Use Monday.com's built-in search with word-by-word approach
+
+        # --- fields to request ------------------------------------------
+        item_fields = """
+                id
+                name
+                state
+        """
+        if include_columns:
+            item_fields += """
+                column_values(ids: ["text3__1", "date9__1"]) {
+                  id
+                  text
+                  __typename
+                  ... on MirrorValue {
+                    display_value
+                  }
+                }
+            """
+
+        # --- final GraphQL query ----------------------------------------
         query = f"""
         query {{
           boards(ids: [{board_id}]) {{
@@ -380,32 +516,21 @@ class MondayDotComInterface:
                 rules: [{rules_str}],
                 operator: and
               }},
-              limit: 500
+              limit: {int(limit)}
             ) {{
               cursor
-              items {{
-                id
-                name
-                state
-                column_values(ids: ["text3__1", "date9__1"]) {{
-                  id
-                  text
-                  __typename
-                  ... on MirrorValue {{
-                    display_value
-                  }}
-                }}
+              items {{{item_fields}
               }}
             }}
           }}
         }}
         """
-        
-        print(f"=== SMART WORD SEARCH DEBUG ===")
+
+        print("=== SMART WORD SEARCH DEBUG ===")
         print(f"Original search term: {original_project_name}")
         print(f"Filtered words being searched: {words}")
         print("=================================")
-        
+                
         response = self.execute_query(query)
         
         if not response or "errors" in response:
@@ -465,23 +590,150 @@ class MondayDotComInterface:
     def _search_with_full_text(self, project_name, result, board_id, start_date):
         """Fallback search with full text"""
         print(f"Using fallback full-text search for: {project_name}")
-        # Use the original single-phrase search as fallback
-        # ... (implement the original single search query)
+        
+        query = f"""
+        query {{
+          boards(ids: {board_id}) {{
+            items_page(
+              query_params: {{
+                rules: [{{
+                  column_id: "text3__1",
+                  compare_value: ["{project_name}"],
+                  operator: contains_text
+                }},
+                {{
+                  column_id: "date9__1", 
+                  compare_value: ["EXACT", "{start_date}"],
+                  operator: greater_than_or_equals
+                }}]
+              }},
+              limit: 500
+            ) {{
+              items {{
+                id
+                name
+                state
+                column_values {{
+                  id
+                  text
+                  __typename
+                  ... on MirrorValue {{
+                    display_value
+                  }}
+                }}
+              }}
+            }}
+          }}
+        }}
+        """
+        
+        response = self.execute_query(query)
+        
+        if not response or "data" not in response:
+            return result
+            
+        try:
+            page = response["data"]["boards"][0]["items_page"]
+            items = page.get("items", [])
+        except (KeyError, IndexError, TypeError):
+            return result
+            
+        matches = []
+        for item in items:
+            if item.get("state") != "active":
+                continue
+                
+            project_id = item["id"]
+            project_name_value = item["name"]
+            project_state = item.get("state", "unknown")
+            
+            project_title = project_name_value
+            created_date = None
+            
+            for col in item.get("column_values", []):
+                if col.get("id") == "text3__1" and col.get("text"):
+                    project_title = col.get("text")
+                elif col.get("id") == "date9__1" and col.get("text"):
+                    created_date = col.get("text")
+                    
+            name_ratio = SequenceMatcher(None, project_name.lower(), project_name_value.lower()).ratio()
+            title_ratio = SequenceMatcher(None, project_name.lower(), project_title.lower()).ratio() if project_title else 0
+            similarity_score = max(name_ratio, title_ratio)
+            
+            matches.append({
+                'id': project_id,
+                'name': project_name_value,
+                'title': project_title,
+                'similarity': similarity_score,
+                'state': project_state,
+                'created_date': created_date
+            })
+            
+        matches = sorted(matches, key=lambda x: x['similarity'], reverse=True)
+        result['matches'] = matches
+        
+        if matches:
+            best_match = matches[0]
+            result['exists'] = True
+            result['type'] = 'existing'
+            result['best_match'] = best_match
+            result['similarity_score'] = best_match['similarity']
+            
         return result
 
-    def _fallback_similarity_search(self, project_name, result):
-        """Final fallback using the old similarity-based approach"""
+    def _fallback_similarity_search(self, project_name, result, similarity_threshold=0.55):
+        """Final fallback using similarity-based approach with threshold filtering"""
         print(f"Using final fallback similarity search for: {project_name}")
-        # Get all projects and do local similarity matching
+        
         projects, error = self.get_tapered_enquiry_projects()
         
         if error:
             result['error'] = error
             return result
+            
+        matches = []
+        for project in projects:
+            project_id = project["id"]
+            project_name_value = project["name"]
+            project_state = project.get("state", "unknown")
+            
+            project_title = project_name_value
+            created_date = None
+            
+            for col in project.get("column_values", []):
+                if col.get("id") == "text3__1" and col.get("text"):
+                    project_title = col.get("text")
+                elif col.get("id") == "date9__1" and col.get("text"):
+                    created_date = col.get("text")
+                    
+            name_ratio = SequenceMatcher(None, project_name.lower(), project_name_value.lower()).ratio()
+            title_ratio = SequenceMatcher(None, project_name.lower(), project_title.lower()).ratio() if project_title else 0
+            similarity_score = max(name_ratio, title_ratio)
+            
+            # Only include matches above the threshold
+            if similarity_score >= similarity_threshold:
+                matches.append({
+                    'id': project_id,
+                    'name': project_name_value,
+                    'title': project_title,
+                    'similarity': similarity_score,
+                    'state': project_state,
+                    'created_date': created_date
+                })
+            
+        # Sort by similarity (best first)
+        matches = sorted(matches, key=lambda x: x['similarity'], reverse=True)
+        result['matches'] = matches
         
-        # ... (implement similarity matching logic)
+        if matches:
+            best_match = matches[0]
+            result['exists'] = True
+            result['type'] = 'existing'
+            result['best_match'] = best_match
+            result['similarity_score'] = best_match['similarity']
+            
         return result
-    
+
     def get_project_by_id(self, project_id):
         """
         Get a project directly by its ID using the items endpoint.
