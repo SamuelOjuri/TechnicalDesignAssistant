@@ -1,73 +1,151 @@
 import os
-import tempfile
 from flask import current_app
 from google.genai import types
 from .llm_interface import gemini_api_with_retry
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Dict, Tuple
+import logging
+import time
+import random
 
-def process_pdf_with_gemini(pdf_content, filename):
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def should_batch_pdfs(pdf_files: List[Dict]) -> bool:
     """
-    Process PDF content using Gemini's File API.
+    Determine if PDFs should be processed in batch based on total size.
     
     Args:
-        pdf_content: The binary content of the PDF file
+        pdf_files: List of dictionaries containing PDF content
+        
+    Returns:
+        bool: True if PDFs should be batched, False if they should be processed individually
+    """
+    # More permissive limits to enable batching
+    MAX_BATCH_SIZE = 50 * 1024 * 1024  # 50MB (increased from 10MB)
+    MAX_FILES_PER_BATCH = 6
+    
+    total_size = sum(len(f['content']) for f in pdf_files)
+    logger.info(f"PDF batch check: {len(pdf_files)} files, {total_size/1024/1024:.2f}MB total")
+    
+    should_batch = (
+        total_size <= MAX_BATCH_SIZE and 
+        len(pdf_files) <= MAX_FILES_PER_BATCH and
+        len(pdf_files) > 1  # Only batch if we have multiple files
+    )
+    
+    logger.info(f"PDF batching decision: {'BATCH' if should_batch else 'INDIVIDUAL'}")
+    return should_batch
+
+def process_pdf_with_gemini(pdf_content: bytes, filename: str) -> str:
+    """
+    Process PDF content directly with Gemini without writing to disk.
+    
+    Args:
+        pdf_content: Raw bytes of the PDF file
         filename: Name of the PDF file
     
     Returns:
         str: Extracted text from the PDF
     """
-    try:
-        # Create a temporary file to use with Gemini
-        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
-            temp_file.write(pdf_content)
-            temp_file_path = temp_file.name
-        
-        # Create a prompt to extract text and information from the PDF
-        prompt = "Please extract all text content from this PDF document, including text from tables, diagrams, and charts."
-        
-        # Process the PDF with Gemini using the client approach
-        with open(temp_file_path, 'rb') as f:
-            pdf_data = f.read()
-            
-            # Use retry function instead of direct API call
-            model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash-preview-05-20")
-            response = gemini_api_with_retry(
-                model=model,
-                contents=[
-                    types.Part.from_bytes(
-                        data=pdf_data,
-                        mime_type='application/pdf',
-                    ),
-                    prompt
-                ]
-            )
-            
-        return response.text
-    except Exception as e:
-        print(f"Error processing PDF with Gemini: {e}")
-        return f"Error processing PDF: {str(e)}"
-    finally:
-        # Clean up the temporary file
-        if os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
+    prompt = ("Please extract all text content from this PDF document, "
+             "including text from tables, diagrams, and charts.")
 
-def process_multiple_pdfs(pdf_files):
+    # Use more efficient model for individual PDFs
+    model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash-preview-05-20")
+    response = gemini_api_with_retry(
+        model=model,
+        contents=[
+            types.Part.from_bytes(data=pdf_content, mime_type='application/pdf'),
+            prompt
+        ]
+    )
+    return response.text
+
+def process_multiple_pdfs_single_call(pdf_files: List[Dict]) -> str:
     """
-    Process multiple PDF files with Gemini.
+    Process multiple PDFs in a single Gemini API call.
     
     Args:
-        pdf_files: List of PDF file data (content and filename)
+        pdf_files: List of dicts with 'content' and 'filename' keys
         
     Returns:
-        combined_text: Combined text from all PDFs
+        str: Combined extracted text from all PDFs
     """
-    combined_text = ""
+    logger.info(f"Processing {len(pdf_files)} PDFs in single batch call")
     
-    for pdf_file in pdf_files:
-        filename = pdf_file['filename']
-        content = pdf_file['content']
+    parts = []
+    for f in pdf_files:
+        parts.append(types.Part.from_bytes(data=f['content'], mime_type='application/pdf'))
+    
+    # Add instruction prompt with filenames for better organization
+    filenames = ", ".join(f['filename'] for f in pdf_files)
+    parts.append(
+        f"Please extract all text content from these {len(pdf_files)} PDF documents: {filenames}. "
+        "Including text from tables, diagrams, and charts. "
+        "For each document, start with '=== PDF: [filename] ===' header and then provide the extracted content."
+    )
+    
+    # Use more efficient model for batch processing
+    model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash-preview-05-20")
+    response = gemini_api_with_retry(model=model, contents=parts)
+    return response.text
+
+def process_pdfs_in_parallel(pdf_files: List[Dict]) -> str:
+    """Process PDFs in parallel using thread pool with rate limiting."""
+    logger.info(f"Starting parallel processing of {len(pdf_files)} PDFs")
+    start_time = time.time()
+    
+    def _process_single_pdf(pdf_file: Dict) -> Tuple[str, str]:
+        pdf_start = time.time()
         
-        # Process each PDF and append its text
-        pdf_text = process_pdf_with_gemini(content, filename)
-        combined_text += f"\nPDF ATTACHMENT ({filename}):\n{pdf_text}\n\n"
+        text = process_pdf_with_gemini(pdf_file['content'], pdf_file['filename'])
+        logger.info(f"Processed {pdf_file['filename']} in {time.time() - pdf_start:.2f}s")
+        return pdf_file['filename'], text
     
-    return combined_text 
+    results = []
+    # Reduce max_workers to be more conservative with API calls
+    with ThreadPoolExecutor(max_workers=5) as ex:  # Reduced from 10 to 5
+        futures = {ex.submit(_process_single_pdf, pdf): pdf for pdf in pdf_files}
+        for f in as_completed(futures):
+            try:
+                filename, text = f.result()
+                results.append((
+                    filename,
+                    f"=== PDF: {filename} ===\n{text}\n"
+                ))
+            except Exception as e:
+                pdf = futures[f]
+                logger.error(f"Error processing {pdf['filename']}: {str(e)}")
+                results.append((
+                    pdf['filename'],
+                    f"Error processing PDF: {str(e)}"
+                ))
+    
+    logger.info(f"Completed parallel processing in {time.time() - start_time:.2f}s")
+    
+    # Combine results in original order
+    return "\n".join(text for _, text in sorted(
+        results,
+        key=lambda x: pdf_files.index(next(p for p in pdf_files if p['filename'] == x[0]))
+    ))
+
+def process_pdf_batch(pdf_files: List[Dict]) -> str:
+    """Process a batch of PDFs with intelligent batching decision."""
+    if not pdf_files:
+        return ""
+    
+    total_size = sum(len(f['content']) for f in pdf_files)
+    logger.info(f"Processing batch of {len(pdf_files)} PDFs (total size: {total_size/1024/1024:.2f}MB)")
+    
+    if should_batch_pdfs(pdf_files):
+        logger.info("Using batch processing for PDFs")
+        try:
+            return process_multiple_pdfs_single_call(pdf_files)
+        except Exception as e:
+            logger.error(f"Batch processing failed: {str(e)}, falling back to parallel")
+            return process_pdfs_in_parallel(pdf_files)
+    else:
+        logger.info("Using parallel processing for PDFs")
+        return process_pdfs_in_parallel(pdf_files) 

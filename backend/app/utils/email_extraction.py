@@ -2,245 +2,296 @@ import os
 from email.parser import BytesParser
 from email import policy
 import extract_msg
+import io
 from flask import current_app
 from email.utils import parsedate_to_datetime
-from zoneinfo import ZoneInfo   # Py-3.9+; use pytz if you're on ≤3.8
+from zoneinfo import ZoneInfo
+from typing import Tuple, Dict, List, Union, BinaryIO
+from datetime import datetime
+import logging
+import time
 
-from .pdf_extraction import process_pdf_with_gemini
+from .pdf_extraction import process_pdf_with_gemini, process_pdf_batch, should_batch_pdfs
 from .image_extraction import process_image_with_gemini
+from .thread_pool import process_items_in_parallel
 
-def process_eml_file(eml_file_path):
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def process_email_content(email_content: bytes, filename: str) -> Tuple[str, str, List[Dict], List[Dict]]:
     """
-    Processes a single .eml file:
-      - Parses the email to extract header and body.
-      - Extracts attachments and inline images and returns their data.
+    Process email content directly from bytes without disk I/O.
     
+    Args:
+        email_content: Raw email content in bytes
+        filename: Original filename for type detection
+        
     Returns:
-      header: string with key header fields.
-      body: string containing the plain text body.
-      attachments_data: list of dictionaries with attachment data.
-      inline_images: list of dictionaries with inline image data.
+        Tuple of (header_info, body, attachments_data, inline_images)
     """
-    # Open and parse the email file using the default email policy
-    with open(eml_file_path, 'rb') as f:
-        msg = BytesParser(policy=policy.default).parse(f)
-
-    # Parse and local-ise the date
-    raw_date = msg.get('date', '')
-    local_date_str = raw_date            # fallback if parsing fails
-    if raw_date:
-        try:
-            dt = parsedate_to_datetime(raw_date)   # returns aware dt if hdr has TZ
-            if dt.tzinfo is None:                  # safety – treat naïve as UTC
-                dt = dt.replace(tzinfo=ZoneInfo("UTC"))
-            dt_local = dt.astimezone(ZoneInfo("Europe/London"))
-            local_date_str = dt_local.strftime("%a, %d %b %Y %H:%M:%S %z")
-        except Exception:
-            pass  # keep original string on failure
-
-    # Extract header fields
-    header_info = (
-        f"From: {msg.get('from', '')}\n"
-        f"To: {msg.get('to', '')}\n"
-        f"Subject: {msg.get('subject', '')}\n"
-        f"Date: {local_date_str}\n"
-    )
-    
-    # Extract the email body
-    body = ""
-    if msg.is_multipart():
-        for part in msg.walk():
-            if part.get_content_type() == "text/plain" and not part.get_filename():
-                body += part.get_content() + "\n"
-    else:
-        body = msg.get_content()
-    
-    # Process attachments and inline images
-    attachments_data = []
-    inline_images = []
-    
-    for part in msg.iter_attachments():
-        filename = part.get_filename()
-        if filename:
-            # Check if this is an inline image
-            is_inline = False
-            content_id = part.get('Content-ID')
-            
-            # Images with Content-ID are typically inline
-            if content_id and filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
-                is_inline = True
-                
-            if is_inline:
-                inline_image_data = {
-                    'filename': filename,
-                    'content': part.get_payload(decode=True),
-                    'content_id': content_id,
-                    'mime_type': part.get_content_type()
-                }
-                inline_images.append(inline_image_data)
-            else:
-                attachment_data = {
-                    'filename': filename,
-                    'content': part.get_payload(decode=True)
-                }
-                attachments_data.append(attachment_data)
-    
-    return header_info, body, attachments_data, inline_images
-
-def process_msg_file(msg_file_path):
-    """
-    Processes a single .msg file (Outlook email format):
-      - Parses the email to extract header and body.
-      - Extracts attachments and inline images and returns their data.
-    
-    Returns:
-      header: string with key header fields.
-      body: string containing the plain text body.
-      attachments_data: list of dictionaries with attachment data.
-      inline_images: list of dictionaries with inline image data.
-    """
-    # Open and parse the Outlook message file
-    msg = extract_msg.Message(msg_file_path)
-    
-    try:
-        # ---------------------------------------------------------
-        # Convert the Outlook MSG date to UK local time (BST/GMT)
-        # ---------------------------------------------------------
-        raw_date = msg.date or ""
-        local_date_str = raw_date                 # fallback
-        if raw_date:
+    if filename.lower().endswith('.msg'):
+        # For MSG files, we need to use a BytesIO since extract_msg expects a file-like object
+        with io.BytesIO(email_content) as bio:
+            msg = extract_msg.Message(bio)
             try:
-                # Handle different date formats from extract_msg
-                if isinstance(raw_date, str):
-                    # If it's a string, try to parse with parsedate_to_datetime
-                    dt = parsedate_to_datetime(raw_date)
-                else:
-                    # If it's already a datetime object, use it directly
-                    dt = raw_date
+                # Extract date
+                raw_date = msg.date or ""
+                local_date_str = format_email_date(raw_date)
                 
-                # Ensure timezone awareness
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+                # Extract header fields
+                header_info = (
+                    f"From: {msg.sender}\n"
+                    f"To: {msg.to}\n"
+                    f"Subject: {msg.subject}\n"
+                    f"Date: {local_date_str}\n"
+                )
                 
-                # Convert to UK local time
-                dt_local = dt.astimezone(ZoneInfo("Europe/London"))
-                local_date_str = dt_local.strftime("%a, %d %b %Y %H:%M:%S %z")
+                body = msg.body
                 
-                # Debug logging for server troubleshooting
-                print(f"MSG Date Debug - Raw: {raw_date} (type: {type(raw_date)})")
-                print(f"MSG Date Debug - Parsed: {dt}")
-                print(f"MSG Date Debug - Local: {dt_local}")
-                print(f"MSG Date Debug - Formatted: {local_date_str}")
+                # Process attachments
+                attachments_data = []
+                inline_images = []
                 
-            except Exception as e:
-                print(f"MSG Date parsing error: {e}")
-                pass  # keep the original string on failure
-
+                for attachment in msg.attachments:
+                    att_filename = attachment.longFilename or attachment.shortFilename
+                    if att_filename:
+                        is_inline = is_inline_attachment(attachment, msg, att_filename)
+                        
+                        if is_inline:
+                            inline_images.append({
+                                'filename': att_filename,
+                                'content': attachment.data,
+                                'content_id': getattr(attachment, 'cid', None),
+                                'mime_type': f"image/{att_filename.split('.')[-1].lower()}"
+                            })
+                        else:
+                            attachments_data.append({
+                                'filename': att_filename,
+                                'content': attachment.data
+                            })
+            finally:
+                msg.close()
+    else:
+        # For EML files, use email.parser
+        msg = BytesParser(policy=policy.default).parsebytes(email_content)
+        
+        # Extract date
+        raw_date = msg.get('date', '')
+        local_date_str = format_email_date(raw_date)
+        
         # Extract header fields
         header_info = (
-            f"From: {msg.sender}\n"
-            f"To: {msg.to}\n"
-            f"Subject: {msg.subject}\n"
+            f"From: {msg.get('from', '')}\n"
+            f"To: {msg.get('to', '')}\n"
+            f"Subject: {msg.get('subject', '')}\n"
             f"Date: {local_date_str}\n"
         )
         
-        # Extract the email body
-        body = msg.body
+        # Extract body
+        body = ""
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain" and not part.get_filename():
+                    body += part.get_content() + "\n"
+        else:
+            body = msg.get_content()
         
-        # Process attachments and inline images
+        # Process attachments
         attachments_data = []
         inline_images = []
         
-        for attachment in msg.attachments:
-            filename = attachment.longFilename or attachment.shortFilename
-            if filename:
-                # Try to determine if it's an inline image
-                is_inline = False
-                
-                # Look for typical image extensions and check if it might be inline
-                # Outlook msg format doesn't clearly distinguish inline vs attachment 
-                # so we'll use heuristics
-                if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
-                    # Check if there's a content ID or if it's referenced in HTML
-                    # This is a heuristic approach
-                    if hasattr(attachment, 'cid') and attachment.cid:
-                        is_inline = True
-                    elif hasattr(msg, 'htmlBody') and msg.htmlBody and filename in msg.htmlBody.decode('utf-8', errors='ignore'):
-                        is_inline = True
-                        
-                if is_inline:
-                    inline_image_data = {
-                        'filename': filename,
-                        'content': attachment.data,
-                        'content_id': attachment.cid if hasattr(attachment, 'cid') else None,
-                        'mime_type': f"image/{filename.split('.')[-1].lower()}"
-                    }
-                    inline_images.append(inline_image_data)
+        for part in msg.iter_attachments():
+            att_filename = part.get_filename()
+            if att_filename:
+                content = part.get_payload(decode=True)
+                if is_inline_image(part, att_filename):
+                    inline_images.append({
+                        'filename': att_filename,
+                        'content': content,
+                        'content_id': part.get('Content-ID'),
+                        'mime_type': part.get_content_type()
+                    })
                 else:
-                    attachment_data = {
-                        'filename': filename,
-                        'content': attachment.data
-                    }
-                    attachments_data.append(attachment_data)
-        
-        return header_info, body, attachments_data, inline_images
+                    attachments_data.append({
+                        'filename': att_filename,
+                        'content': content
+                    })
     
-    finally:
-        # Close the msg file to release the file handle
-        msg.close()
+    return header_info, body, attachments_data, inline_images
 
-def extract_text_from_email(email_text, attachments_data, inline_images=None):
-    """Extracts all text from email and attachments returns as a single string."""
+def format_email_date(raw_date: Union[str, datetime]) -> str:
+    """Format email date to local time string."""
+    if not raw_date:
+        return raw_date
+    
+    try:
+        if isinstance(raw_date, str):
+            dt = parsedate_to_datetime(raw_date)
+        else:
+            dt = raw_date
+        
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+        
+        dt_local = dt.astimezone(ZoneInfo("Europe/London"))
+        return dt_local.strftime("%a, %d %b %Y %H:%M:%S %z")
+    except Exception as e:
+        print(f"Date parsing error: {e}")
+        return str(raw_date)
+
+def is_inline_image(part, filename: str) -> bool:
+    """Check if an email part is an inline image."""
+    return (
+        filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')) and
+        bool(part.get('Content-ID'))
+    )
+
+def is_inline_attachment(attachment, msg, filename: str) -> bool:
+    """Check if an MSG attachment is an inline image."""
+    return (
+        filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')) and
+        (
+            (hasattr(attachment, 'cid') and attachment.cid) or
+            (hasattr(msg, 'htmlBody') and msg.htmlBody and 
+             filename in msg.htmlBody.decode('utf-8', errors='ignore'))
+        )
+    )
+
+def extract_text_from_email(email_text: str, attachments_data: List[Dict], inline_images: List[Dict] = None) -> str:
+    """Extract text from email and process attachments in parallel."""
+    logger.info("Starting email attachment processing")
+    start_time = time.time()
+    
     combined_text = f"EMAIL CONTENT:\n{email_text}\n\n"
     
-    # For non-visual content attachments, just note they exist
-    for attachment in attachments_data:
-        filename = attachment['filename']
-        if not (filename.lower().endswith(".pdf") or 
-                filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp'))):
-            combined_text += f"\nATTACHMENT ({filename}) [Not processed - not a PDF or image]\n\n"
+    # Prepare visual items for processing
+    visual_items = []
     
-    # Limit the total number of visual items to process to avoid rate limits
-    MAX_VISUAL_ITEMS = 10
+    # Sort PDFs by size (process smaller files first)
+    pdf_attachments = sorted(
+        [att for att in attachments_data if att['filename'].lower().endswith('.pdf')],
+        key=lambda x: len(x['content'])
+    )
     
-    # Collect all visual attachments
-    pdf_attachments = [a for a in attachments_data if a['filename'].lower().endswith(".pdf")]
-    image_attachments = [a for a in attachments_data if a['filename'].lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp'))]
+    # Decide once whether they can be submitted together
+    if pdf_attachments and should_batch_pdfs(pdf_attachments):
+        visual_items.append(('pdf_batch', pdf_attachments))
+        logger.info(f"Added PDF batch with {len(pdf_attachments)} files")
+    else:
+        visual_items.extend(('pdf', pdf) for pdf in pdf_attachments)
+        logger.info(f"Added {len(pdf_attachments)} individual PDFs")
     
-    all_visual_items = []
+    # Add image attachments
+    image_attachments = [
+        att for att in attachments_data
+        if any(att['filename'].lower().endswith(ext) 
+               for ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp'))
+    ]
+    visual_items.extend(('image', img) for img in image_attachments)
     
-    # Add most important items first
-    if pdf_attachments:
-        all_visual_items.extend([('pdf', pdf) for pdf in pdf_attachments])
-    if image_attachments:
-        all_visual_items.extend([('image', img) for img in image_attachments])
+    # Add inline images
     if inline_images:
-        all_visual_items.extend([('inline', img) for img in inline_images])
+        visual_items.extend(('inline', img) for img in inline_images)
     
-    # Process only a limited number of items
-    processed_items = all_visual_items[:MAX_VISUAL_ITEMS]
-    skipped_items = all_visual_items[MAX_VISUAL_ITEMS:]
+    logger.info(f"Found {len(visual_items)} visual items to process")
     
-    # Note skipped items
-    if skipped_items:
-        combined_text += "\nNOTE: Some visual elements were not processed due to API rate limits:\n"
-        for item_type, item in skipped_items:
-            combined_text += f"- {item_type.upper()}: {item['filename']}\n"
-        combined_text += "\n"
+    # Process non-visual attachments
+    non_visual = [
+        att for att in attachments_data 
+        if not any(att['filename'].lower().endswith(ext) 
+                  for ext in ('.pdf', '.jpg', '.jpeg', '.png', '.gif', '.bmp'))
+    ]
+    for attachment in non_visual:
+        combined_text += f"\nATTACHMENT ({attachment['filename']}) [Not processed - not a PDF or image]\n\n"
     
-    # Process the limited set of items
-    for item_type, item in processed_items:
-        if item_type == 'pdf':
-            # Process this PDF
-            pdf_text = process_pdf_with_gemini(item['content'], item['filename'])
-            combined_text += f"\nPDF ATTACHMENT ({item['filename']}):\n{pdf_text}\n\n"
-        elif item_type == 'inline':
-            # Process this inline image
-            image_text = process_image_with_gemini(item['content'], item['filename'], "INLINE IMAGE")
-            combined_text += f"\nINLINE IMAGE ({item['filename']}):\n{image_text}\n\n"
-        elif item_type == 'image':
-            # Process this image attachment
-            image_text = process_image_with_gemini(item['content'], item['filename'], "ATTACHMENT")
-            combined_text += f"\nIMAGE ATTACHMENT ({item['filename']}):\n{image_text}\n\n"
+    # Conservative parallel processing to avoid rate limits
+    MAX_WORKERS = 3  # Optimal based on performance testing
+    # Remove BATCH_SIZE logic - let MAX_WORKERS and rate limiter handle concurrency
+    BATCH_SIZE = None  # Always process all items concurrently (limited by MAX_WORKERS)
     
-    return combined_text 
+    logger.info(f"Processing with MAX_WORKERS={MAX_WORKERS}, BATCH_SIZE={BATCH_SIZE}")
+    
+    # Get app context
+    app = current_app._get_current_object()
+    
+    def _process_visual(item_type: str, item: Union[Dict, List[Dict]]) -> Tuple[str, str]:
+        """Process a single visual item or batch."""
+        item_start = time.time()
+        
+        try:
+            if item_type == 'pdf_batch':
+                total_size = sum(len(pdf['content']) for pdf in item) / (1024 * 1024)
+                logger.info(f"Processing PDF batch with {len(item)} files ({total_size:.2f}MB total)")
+                text = process_pdf_batch(item)  # item is the list of PDFs
+                header = "\nBATCHED PDF ATTACHMENTS:\n"
+                logger.info(f"Processed PDF batch in {time.time() - item_start:.2f}s")
+                return "batched_pdfs", f"{header}{text}\n\n"
+            elif item_type == 'pdf':
+                file_size = len(item['content']) / (1024 * 1024)  # Size in MB
+                logger.info(f"Starting to process {item['filename']} ({file_size:.2f}MB)")
+                text = process_pdf_with_gemini(item['content'], item['filename'])
+                logger.info(f"Processed PDF {item['filename']} in {time.time() - item_start:.2f}s")
+                return item['filename'], f"\nPDF ATTACHMENT ({item['filename']}):\n{text}\n\n"
+            elif item_type == 'inline':
+                file_size = len(item['content']) / (1024 * 1024)  # Size in MB
+                logger.info(f"Starting to process {item['filename']} ({file_size:.2f}MB)")
+                text = process_image_with_gemini(item['content'], item['filename'], "INLINE IMAGE")
+                logger.info(f"Processed inline image {item['filename']} in {time.time() - item_start:.2f}s")
+                return item['filename'], f"\nINLINE IMAGE ({item['filename']}):\n{text}\n\n"
+            else:  # image attachment
+                file_size = len(item['content']) / (1024 * 1024)  # Size in MB
+                logger.info(f"Starting to process {item['filename']} ({file_size:.2f}MB)")
+                text = process_image_with_gemini(item['content'], item['filename'], "ATTACHMENT")
+                logger.info(f"Processed image {item['filename']} in {time.time() - item_start:.2f}s")
+                return item['filename'], f"\nIMAGE ATTACHMENT ({item['filename']}):\n{text}\n\n"
+        except Exception as e:
+            if item_type == 'pdf_batch':
+                logger.error(f"Error processing PDF batch: {str(e)}")
+                return "batched_pdfs", f"\nError processing PDF batch: {str(e)}\n\n"
+            else:
+                logger.error(f"Error processing {item['filename']}: {str(e)}")
+                return item['filename'], f"\nError processing {item_type.upper()} ({item['filename']}): {str(e)}\n\n"
+    
+    # Process items in parallel
+    results = process_items_in_parallel(
+        visual_items,
+        _process_visual,
+        max_workers=MAX_WORKERS,
+        batch_size=BATCH_SIZE
+    )
+    
+    # Maintain original order (with special handling for batched PDFs)
+    order_map = {}
+    for idx, item in enumerate(visual_items):
+        if item[0] == 'pdf_batch':
+            order_map["batched_pdfs"] = idx
+        else:
+            order_map[item[1]['filename']] = idx
+    
+    sorted_results = sorted(results, key=lambda x: order_map.get(x[0], float('inf')))
+    
+    # Add results to combined text
+    for _, text in sorted_results:
+        combined_text += text
+    
+    logger.info(f"Completed email attachment processing in {time.time() - start_time:.2f}s")
+    return combined_text
+
+def process_eml_file(eml_file_path):
+    """
+    Legacy function maintained for compatibility.
+    Processes a single .eml file from disk.
+    """
+    with open(eml_file_path, 'rb') as f:
+        content = f.read()
+    return process_email_content(content, eml_file_path)
+
+def process_msg_file(msg_file_path):
+    """
+    Legacy function maintained for compatibility.
+    Processes a single .msg file from disk.
+    """
+    with open(msg_file_path, 'rb') as f:
+        content = f.read()
+    return process_email_content(content, msg_file_path) 
