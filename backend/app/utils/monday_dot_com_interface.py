@@ -315,10 +315,23 @@ class MondayDotComInterface:
                 if re.fullmatch(r"\d+[A-Z]?", upper):
                     continue
 
-                # Skip UK postcode parts (both formats)
-                # First part: 1-2 letters + 1-2 digits (SW6, M1, B23)
-                # Second part: 1 digit + 2 letters (4LX, 9QU, 1DN)
-                if re.fullmatch(r"[A-Z]{1,2}\d{1,2}", upper) or re.fullmatch(r"\d[A-Z]{2}", upper):
+                # UPDATED: Comprehensive UK postcode filtering
+                # Special case: GIR 0AA
+                if upper == "GIR":
+                    continue
+                    
+                # UK Postcode patterns (based on GOV.UK official regex)
+                uk_postcode_patterns = [
+                    r"[A-Z][0-9]{1,2}",                    # M1, M60
+                    r"[A-Z][A-HJKPSTUW][0-9]{1,2}",        # SW1, SW60 (second letter excludes I)
+                    r"[A-Z][0-9][A-Z]",                    # W1T, M1A ← FIXES THE ISSUE
+                    r"[A-Z][A-HJKPSTUW][0-9][A-Z]",        # WC1A, SW1A
+                    r"[0-9][A-Z]{2}",                      # 1AL, 2AA (inward code)
+                    r"0[A-Z]{2}"                           # 0AA (for GIR 0AA)
+                ]
+                
+                # Check if token matches any UK postcode pattern
+                if any(re.fullmatch(pattern, upper) for pattern in uk_postcode_patterns):
                     continue
 
                 # Skip drawing references (letter(s) + numbers)
