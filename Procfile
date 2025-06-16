@@ -1,1 +1,1 @@
-web: gunicorn backend.wsgi:app --timeout 600 --workers 1 --bind 0.0.0.0:$PORT
+web: gunicorn wsgi:app --workers $WEB_CONCURRENCY --timeout 300 --bind 0.0.0.0:$PORT
