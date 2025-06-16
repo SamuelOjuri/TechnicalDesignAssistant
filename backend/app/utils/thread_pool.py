@@ -24,7 +24,7 @@ def with_app_context(app: Flask, func: Callable) -> Callable:
 def process_items_in_parallel(
     items: List[Tuple[str, Any]], 
     process_func: Callable, 
-    max_workers: int = 5,  
+    max_workers: int = 7,  
     batch_size: int = None  # Optional batch size for large sets
 ) -> List[Tuple[str, Any]]:
     """

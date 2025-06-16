@@ -13,8 +13,8 @@ class GlobalGeminiRateLimiter:
     """
     
     def __init__(self, 
-                 requests_per_minute: int = 800,  # Conservative limit
-                 max_concurrent: int = 5):       # Even more conservative
+                 requests_per_minute: int = 950,  # Updated limit
+                 max_concurrent: int = 7):       # U
         self.requests_per_minute = requests_per_minute
         self.max_concurrent = max_concurrent
         
