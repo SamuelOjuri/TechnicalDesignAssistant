@@ -1,4 +1,3 @@
-
 from flask import Blueprint, request, jsonify, current_app
 from ..services.monday_service import (
     search_monday_projects, 
@@ -183,6 +182,8 @@ def format_date_for_monday(date_string):
         "%Y-%m-%d",      # YYYY-MM-DD (already correct format)
         "%d %b %Y",      # DD Mon YYYY (25 Feb 2025)
         "%d %B %Y",      # DD Month YYYY (25 February 2025)
+        "%B %d, %Y",     # Month DD, YYYY (February 10, 2025)
+        "%b %d, %Y",     # Mon DD, YYYY (Feb 10, 2025)
         "%d/%m/%y",      # DD/MM/YY
         "%d-%m-%y",      # DD-MM-YY
     ]
