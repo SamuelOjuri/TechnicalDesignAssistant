@@ -44,7 +44,7 @@ def generate_chat_response(message, params=None, extracted_text=None, param_sour
     )
     
     # Use configured model from app config
-    model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash-preview-05-20")
+    model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash")
     
     # Call Gemini API with retry logic
     response = gemini_api_with_retry(model, [system, message])
