@@ -45,7 +45,7 @@ def process_image_with_gemini(image_content, filename, image_type="ATTACHMENT"):
             
             # Use a try/except block specifically for this API call
             try:
-                model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash-preview-05-20")
+                model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash")
                 response = gemini_api_with_retry(
                     model=model,
                     contents=[

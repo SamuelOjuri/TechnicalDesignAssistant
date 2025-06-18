@@ -88,7 +88,7 @@ def query_llm(context, query):
         """
     
     # Get response from Gemini with enhanced retry logic
-    model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash-preview-05-20")  
+    model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash")  
     response = gemini_api_with_retry(model, prompt)
     
     return response.text 
