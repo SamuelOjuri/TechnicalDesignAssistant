@@ -1,4 +1,3 @@
-
 import json
 import requests
 from difflib import SequenceMatcher
@@ -300,16 +299,18 @@ class MondayDotComInterface:
                 'him', 'time', 'two', 'more', 'go', 'no', 'way', 'could', 'my', 
                 'than', 'been', 'call', 'who', 'sit', 'now', 'find', 'down', 
                 'day', 'did', 'get', 'come', 'made', 'may', 'part'
-                
             }
 
-            # 1) replace punctuation-runs with a single space
-            cleaned = re.sub(rf"[{re.escape(string.punctuation)}]+", " ", text)
-            # 2) split again on whitespace
-            raw_tokens = [t.strip() for t in cleaned.split() if t.strip()]
+            # IMPROVED: Use a simpler approach that preserves meaningful punctuation
+            # 1) Handle common abbreviations by removing the period
+            text = re.sub(r'\b(St|Dr|Rd)\.\s*', r'\1 ', text)
+            
+            # 2) Split on punctuation but preserve apostrophes within words
+            #    This regex splits on punctuation except apostrophes that are between word characters
+            tokens = re.findall(r"\b\w+(?:'\w+)*\b", text)
 
             meaningful = []
-            for word in raw_tokens:
+            for word in tokens:
                 upper = word.upper()
                 lower = word.lower()
 
@@ -345,6 +346,7 @@ class MondayDotComInterface:
                     continue
 
                 # Skip very short tokens (len ≤ 2) unless whitelisted
+                # Added more common abbreviations that should be preserved
                 if len(word) <= 2 and upper not in {"OF", "ST", "DR", "RD"}:
                     continue
 
