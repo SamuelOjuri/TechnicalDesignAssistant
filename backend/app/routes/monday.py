@@ -180,6 +180,7 @@ def format_date_for_monday(date_string):
         "%d/%m/%Y",      # DD/MM/YYYY (25/02/2025)
         "%d-%m-%Y",      # DD-MM-YYYY
         "%Y-%m-%d",      # YYYY-MM-DD (already correct format)
+        "%Y/%m/%d",      # YYYY/MM/DD (2025/06/24)
         "%d %b %Y",      # DD Mon YYYY (25 Feb 2025)
         "%d %B %Y",      # DD Month YYYY (25 February 2025)
         "%B %d, %Y",     # Month DD, YYYY (February 10, 2025)
