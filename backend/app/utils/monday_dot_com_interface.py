@@ -1,7 +1,9 @@
+
 import json
 import requests
 from difflib import SequenceMatcher
 from flask import current_app
+import itertools
 
 class MondayDotComInterface:
     """Interface for interacting with Monday.com API"""
@@ -442,12 +444,13 @@ class MondayDotComInterface:
         if hits:
             return hits
 
-        # 2) Relax progressively: drop the least-specific word each round
-        for i in range(len(ordered) - 1, 0, -1):
-            subset = ordered[:i]            # keep the i most-specific words
-            hits = self._search_with_words(subset, board_id, start_date, original)
-            if hits:
-                return hits
+        # 2) Try all other non-empty subsets (except the full set, already tried)
+        n = len(ordered)
+        for r in range(n-1, 0, -1):
+            for subset in itertools.combinations(ordered, r):
+                hits = self._search_with_words(list(subset), board_id, start_date, original)
+                if hits:
+                    return hits
 
         return []
 
@@ -694,7 +697,7 @@ class MondayDotComInterface:
             
         return result
 
-    def _fallback_similarity_search(self, project_name, result, similarity_threshold=0.55):
+    def _fallback_similarity_search(self, project_name, result, similarity_threshold=0.50):
         """Final fallback using similarity-based approach with threshold filtering"""
         print(f"Using final fallback similarity search for: {project_name}")
         
