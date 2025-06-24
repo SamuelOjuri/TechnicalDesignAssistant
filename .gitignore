@@ -67,3 +67,5 @@ data/
 output/
 
 debug_extractions/
+
+test_redis_full.py

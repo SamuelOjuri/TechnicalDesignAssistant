@@ -211,10 +211,7 @@ def extract_text_from_email(email_text: str, attachments_data: List[Dict], inlin
     BATCH_SIZE = None  # Always process all items concurrently (limited by MAX_WORKERS)
     
     logger.info(f"Processing with MAX_WORKERS={MAX_WORKERS}, BATCH_SIZE={BATCH_SIZE}")
-    
-    # Get app context
-    app = current_app._get_current_object()
-    
+        
     def _process_visual(item_type: str, item: Union[Dict, List[Dict]]) -> Tuple[str, str]:
         """Process a single visual item or batch."""
         item_start = time.time()

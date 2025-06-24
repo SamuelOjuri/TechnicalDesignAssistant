@@ -6,6 +6,7 @@ import { ChatInterface } from './components/ChatInterface';
 import { MondayProjectSearch } from './components/MondayProjectSearch';
 import { Button } from './components/ui/button';
 import { ParameterValidator } from './components/ParameterValidator';
+import { useWebSocket } from './hooks/useWebSocket';
 //import { Alert, AlertTitle, AlertDescription } from './components/ui/alert';
 
 /**
@@ -40,6 +41,35 @@ const App: React.FC = () => {
   const [chatResetTrigger, setChatResetTrigger] = useState<number>(0);
   const [paramSources, setParamSources] = useState<ParameterSource | null>(null); // NEW
   const [showParameterValidator, setShowParameterValidator] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [progressUpdates, setProgressUpdates] = useState<any[]>([]);
+  const [partialResults, setPartialResults] = useState<string[]>([]);
+
+  // WebSocket connection
+  const { connected } = useWebSocket(jobId, (update) => {
+    setProgressUpdates(prev => [...prev, update]);
+    
+    if (update.type === 'partial_result') {
+      setPartialResults(prev => [...prev, `${update.result_type}: ${update.content}`]);
+    }
+    
+    // ✅ CORRECT - Just check for completion stage (no large data needed)
+    if (update.stage === 'completed') {
+      console.log('✅ Processing completed!');
+      
+      // TODO: Trigger next step in your workflow
+      // (Maybe show Monday search or continue as new enquiry)
+      setIsProcessing(false);
+      
+      // If you need the actual results, they should come from 
+      // your existing workflow, not from WebSocket
+    }
+    
+    if (update.error) {
+      console.error('Processing error:', update.error);
+      setIsProcessing(false);
+    }
+  });
 
   /**
    * Combine Monday.com params with the ones parsed from the new email.
@@ -104,12 +134,9 @@ const App: React.FC = () => {
 
   const handleFileUpload = async (files: FileList) => {
     setIsProcessing(true);
-    // Reset states
-    setExtractedParams(null);
-    setExtractedText(null);
-    setProjectName(null);
-    setShowMondaySearch(false);
-    setEnquiryType(null);
+    setProgressUpdates([]);
+    setPartialResults([]);
+    // Reset other states...
     
     const formData = new FormData();
     const fileArray = Array.from(files);
@@ -118,82 +145,23 @@ const App: React.FC = () => {
     });
     
     try {
-      // Show processing information for each file
-      for (let i = 0; i < fileArray.length; i++) {
-        const file = fileArray[i];
-        setCurrentFile(file.name);
-        
-        if (file.name.toLowerCase().endsWith('.eml')) {
-          setProcessingStage('Extracting email data');
-        } else if (file.name.toLowerCase().endsWith('.msg')) {
-          setProcessingStage('Extracting Outlook message data');
-        } else if (file.name.toLowerCase().endsWith('.pdf')) {
-          setProcessingStage('Processing PDF content');
-        }
-        
-        // Add a small delay just to show the processing stage for each file
-        if (fileArray.length > 1) {
-          await new Promise(resolve => setTimeout(resolve, 800));
-        }
-      }
-      
-      setProcessingStage('Sending files and attachments to server');
-      
       const response = await fetch(`${API_BASE_URL}/api/process`, {
         method: 'POST',
         body: formData,
-        // Don't set Content-Type header - browser will set it with boundary
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'File processing failed');
+        throw new Error('File upload failed');
       }
-      
-      setProcessingStage('Analyzing extracted data...');
       
       const data = await response.json();
-      setExtractedText(data.extractedText);
+      setJobId(data.job_id);
       
-      // Store the extracted parameters but don't display them yet
-      const initialParams = data.params;
-      setEmailParams(initialParams);          // Store email params for later use
-      
-      // If we have a project name, show the Monday.com search component
-      if (data.projectName) {
-        setProjectName(data.projectName);
-        setShowMondaySearch(true);
-      } else {
-        // If no project name, treat as new enquiry immediately
-        setEnquiryType('New Enquiry');
-        // Set default values for New Enquiry
-        const updatedParams = {
-          ...initialParams,
-          "Reason for Change": "New Enquiry",
-          "Drawing Reference": TAPEREDPLUS_ASSIGNMENT_TEXT,
-          "Revision": TAPEREDPLUS_ASSIGNMENT_TEXT
-        };
-        setExtractedParams(updatedParams);
-
-        // NEW – all values originate from email/content
-        const emailOnlySources = Object.keys(updatedParams).reduce(
-          (acc, k) => ({ 
-            ...acc, 
-            [k]: (k === "Drawing Reference" || k === "Revision") 
-              ? 'Business Rule' as const 
-              : 'Email Content' as const 
-          }),
-          {}
-        );
-        setParamSources(emailOnlySources);
-      }
+      // The WebSocket will handle progress updates
       
     } catch (error) {
       console.error('Error:', error);
-    } finally {
       setIsProcessing(false);
-      setCurrentFile(null);
-      setProcessingStage(null);
     }
   };
 

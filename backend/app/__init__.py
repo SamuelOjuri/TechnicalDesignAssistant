@@ -2,6 +2,9 @@ from flask import Flask, jsonify, redirect, send_from_directory
 from flask_cors import CORS
 from .config import Config
 import os
+from .config import CELERY_CONFIG
+from .celery_app import create_celery_app
+from .routes.websocket import socketio
 
 def create_app(config_class=Config):
     """Initialize Flask app with configurations and register blueprints."""
@@ -51,4 +54,14 @@ def create_app(config_class=Config):
     app.register_blueprint(monday_bp)
     app.register_blueprint(chat_bp)
 
-    return app
+    # Add Redis URL to app config
+    app.config['REDIS_URL'] = CELERY_CONFIG['broker_url']
+    
+    # Initialize Celery
+    celery = create_celery_app(app)
+    app.celery = celery
+    
+    # Initialize SocketIO
+    socketio.init_app(app, cors_allowed_origins="*")
+
+    return app, socketio

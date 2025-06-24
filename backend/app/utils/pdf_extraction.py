@@ -1,7 +1,7 @@
 import os
 from flask import current_app
 from google.genai import types
-from .llm_interface import gemini_api_with_retry
+from .llm_interface import gemini_api_with_retry, get_config_value
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Tuple
 import logging
@@ -53,7 +53,7 @@ def process_pdf_with_gemini(pdf_content: bytes, filename: str) -> str:
              "including text from tables, diagrams, and charts.")
 
     # Use more efficient model for individual PDFs
-    model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash")
+    model = get_config_value('GEMINI_MODEL', "gemini-2.5-flash")
     response = gemini_api_with_retry(
         model=model,
         contents=[
@@ -88,7 +88,7 @@ def process_multiple_pdfs_single_call(pdf_files: List[Dict]) -> str:
     )
     
     # Use more efficient model for batch processing
-    model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash")
+    model = get_config_value('GEMINI_MODEL', "gemini-2.5-flash")
     response = gemini_api_with_retry(model=model, contents=parts)
     return response.text
 

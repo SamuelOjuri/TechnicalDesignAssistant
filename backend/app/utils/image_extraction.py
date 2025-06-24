@@ -2,7 +2,7 @@ import os
 import tempfile
 from flask import current_app
 from google.genai import types
-from .llm_interface import gemini_api_with_retry
+from .llm_interface import gemini_api_with_retry, get_config_value
 
 def process_image_with_gemini(image_content, filename, image_type="ATTACHMENT"):
     """
@@ -45,7 +45,7 @@ def process_image_with_gemini(image_content, filename, image_type="ATTACHMENT"):
             
             # Use a try/except block specifically for this API call
             try:
-                model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash")
+                model = get_config_value('GEMINI_MODEL', "gemini-2.5-flash")
                 response = gemini_api_with_retry(
                     model=model,
                     contents=[

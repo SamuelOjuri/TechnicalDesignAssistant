@@ -90,4 +90,8 @@ red-black-tree-mod==1.22
 soupsieve==2.6 
 tzlocal==5.3.1 
 win-unicode-console==0.5
+celery==5.5.3
+redis==6.2.0
+flask-socketio==5.5.1
+eventlet==0.40.0
 

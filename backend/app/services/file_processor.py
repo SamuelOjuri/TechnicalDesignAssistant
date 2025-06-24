@@ -40,10 +40,7 @@ def process_files(files: List[Any]) -> Dict:
     
     all_text = ""
     email_data = None
-    
-    # Get Flask app instance
-    app = current_app._get_current_object()
-    
+       
     # Separate PDFs and emails
     pdf_files = []
     email_files = []

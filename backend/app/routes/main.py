@@ -6,33 +6,18 @@ import pandas as pd
 from ..services.file_processor import process_files, allowed_file
 from ..services.parameter_extraction import extract_parameters
 from ..services.monday_service import search_monday_projects, get_project_details, extract_parameters_from_monday_project
+from ..tasks.file_processing_tasks import process_files_async
+from ..utils.progress_tracker import ProgressTracker
+import uuid
+import base64
 
 main_bp = Blueprint('main', __name__, url_prefix='/api')
 
 @main_bp.route('/process', methods=['POST'])
 def process_uploaded_files():
     """
-    Process uploaded files (eml, msg, pdf) and extract parameters.
-    ---
-    Returns:
-        JSON with extracted text, parameters, and project name
+    Process uploaded files asynchronously and return job_id immediately.
     """
-    # Check if this is a JSON request with extracted text (second pass)
-    if request.is_json:
-        data = request.json
-        all_text = data.get('extractedText', '')
-        enquiry_type = data.get('forceEnquiryType')
-        
-        # Extract parameters with the specified enquiry type
-        params = extract_parameters(all_text, enquiry_type)
-        
-        return jsonify({
-            "extractedText": all_text,
-            "params": params,
-            "projectName": data.get('projectName')
-        })
-    
-    # Otherwise, handle file uploads (first pass)
     if 'files' not in request.files:
         return jsonify({'error': 'No files uploaded'}), 400
     
@@ -45,9 +30,41 @@ def process_uploaded_files():
         if not allowed_file(file.filename):
             return jsonify({'error': f'File type not allowed: {file.filename}'}), 400
     
-    # Process files
-    result = process_files(files)
-    return jsonify(result)
+    # Generate unique job ID
+    job_id = str(uuid.uuid4())
+    
+    # Prepare file data for background processing
+    files_data = []
+    for file in files:
+        filename = secure_filename(file.filename)
+        content = file.read()
+        files_data.append({
+            'filename': filename,
+            'content': base64.b64encode(content).decode('utf-8'),  # Encode binary data
+            'size': len(content)
+        })
+    
+    # Start background task
+    task = process_files_async.delay(files_data, job_id)
+    
+    # Return job_id immediately
+    return jsonify({
+        'job_id': job_id,
+        'task_id': task.id,
+        'status': 'processing',
+        'message': 'Files are being processed in the background'
+    })
+
+@main_bp.route('/progress/<job_id>', methods=['GET'])
+def get_progress(job_id):
+    """Get progress for a specific job."""
+    progress_tracker = ProgressTracker(job_id)
+    progress = progress_tracker.get_progress()
+    
+    if not progress:
+        return jsonify({'error': 'Job not found'}), 404
+    
+    return jsonify(progress)
 
 @main_bp.route('/download-excel', methods=['POST'])
 def download_excel():

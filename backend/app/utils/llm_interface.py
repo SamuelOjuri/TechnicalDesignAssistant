@@ -1,11 +1,20 @@
 import time
 import random
+import os
 from flask import current_app
 from google import genai
 from google.genai import types
 import logging
 
 logger = logging.getLogger(__name__)
+
+def get_config_value(key, default=None):
+    """Get config value from Flask app context or environment variables."""
+    try:
+        return current_app.config.get(key, default)
+    except RuntimeError:
+        # Working outside Flask app context (e.g., in Celery worker)
+        return os.environ.get(key, default)
 
 # Define a function to check if an exception is a rate limit error
 def is_rate_limit_error(exception):
@@ -18,7 +27,7 @@ def gemini_api_with_retry(model, contents, max_retries=5, initial_backoff=5):
     """
     from .rate_limiter import get_rate_limiter
     
-    api_key = current_app.config.get('GOOGLE_API_KEY')
+    api_key = get_config_value('GOOGLE_API_KEY')
     client = genai.Client(api_key=api_key)
     rate_limiter = get_rate_limiter()
     
@@ -88,7 +97,7 @@ def query_llm(context, query):
         """
     
     # Get response from Gemini with enhanced retry logic
-    model = current_app.config.get('GEMINI_MODEL', "gemini-2.5-flash")  
+    model = get_config_value('GEMINI_MODEL', "gemini-2.5-flash")  
     response = gemini_api_with_retry(model, prompt)
     
     return response.text 

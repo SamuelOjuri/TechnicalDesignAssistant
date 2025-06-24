@@ -1,6 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Tuple, Callable, Any
-from flask import Flask, current_app
+from typing import List, Tuple, Callable, Any, Optional
+from flask import Flask
 import functools
 import logging
 import time
@@ -21,6 +21,15 @@ def with_app_context(app: Flask, func: Callable) -> Callable:
             return func(*args, **kwargs)
     return wrapper
 
+def get_current_app() -> Optional[Flask]:
+    """Safely get current Flask app, return None if not available."""
+    try:
+        from flask import current_app
+        return current_app._get_current_object()
+    except RuntimeError:
+        # Working outside Flask app context (e.g., in Celery worker)
+        return None
+
 def process_items_in_parallel(
     items: List[Tuple[str, Any]], 
     process_func: Callable, 
@@ -40,14 +49,31 @@ def process_items_in_parallel(
         List of (filename, processed_text) tuples
     """
     all_results = []
-    app = current_app._get_current_object()
+    app = get_current_app()  # This can now be None
     
     def run_with_context(*args, **kwargs):
-        with app.app_context():
-            start_time = time.time()
+        start_time = time.time()
+        
+        if app:
+            # We have Flask context, use it
+            with app.app_context():
+                result = process_func(*args, **kwargs)
+        else:
+            # No Flask context, run directly
             result = process_func(*args, **kwargs)
-            logger.info(f"Thread completed processing in {time.time() - start_time:.2f}s")
-            return result
+            
+        logger.info(f"Thread completed processing in {time.time() - start_time:.2f}s")
+        return result
+    
+    def run_without_context(*args, **kwargs):
+        """Simple wrapper for when no Flask context is available."""
+        start_time = time.time()
+        result = process_func(*args, **kwargs)
+        logger.info(f"Thread completed processing in {time.time() - start_time:.2f}s")
+        return result
+    
+    # Choose the appropriate wrapper based on Flask context availability
+    execution_wrapper = run_with_context if app else run_without_context
     
     # Process items in batches if batch_size is specified
     if batch_size:
@@ -59,7 +85,7 @@ def process_items_in_parallel(
             with ThreadPoolExecutor(max_workers=min(max_workers, len(batch))) as executor:
                 # Submit all jobs in this batch simultaneously
                 future_to_item = {
-                    executor.submit(run_with_context, item_type, item): (item_type, item)
+                    executor.submit(execution_wrapper, item_type, item): (item_type, item)
                     for item_type, item in batch
                 }
                 
@@ -90,7 +116,7 @@ def process_items_in_parallel(
         with ThreadPoolExecutor(max_workers=min(max_workers, len(items))) as executor:
             # Submit all jobs simultaneously
             future_to_item = {
-                executor.submit(run_with_context, item_type, item): (item_type, item)
+                executor.submit(execution_wrapper, item_type, item): (item_type, item)
                 for item_type, item in items
             }
             
