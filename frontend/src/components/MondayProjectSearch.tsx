@@ -107,7 +107,7 @@ export const MondayProjectSearch: React.FC<MondayProjectSearchProps> = ({
 
   return (
     <Card className="shadow-md border-0 mb-8">
-      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg">
+      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg section-header">
         <CardTitle className="flex items-center">
           <span className="text-xl">Email Analysis & Project Matching</span>
         </CardTitle>

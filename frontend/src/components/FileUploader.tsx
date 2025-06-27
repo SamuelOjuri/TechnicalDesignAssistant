@@ -64,7 +64,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
   
   return (
     <Card className="shadow-md border-0">
-      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg">
+      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg section-header">
         <CardTitle>
           <span className="step-indicator">1</span> Upload & Process
         </CardTitle>
