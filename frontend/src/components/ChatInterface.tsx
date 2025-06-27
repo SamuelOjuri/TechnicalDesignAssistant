@@ -48,7 +48,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ disabled, onSendMe
 
   return (
     <Card className="shadow-md border-0">
-      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg">
+      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg section-header">
         <CardTitle>
           <span className="step-indicator">3</span> Chat with Assistant
         </CardTitle>

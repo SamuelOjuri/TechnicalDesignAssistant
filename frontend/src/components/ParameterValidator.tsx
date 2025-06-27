@@ -201,7 +201,7 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
 
   return (
     <Card className="shadow-md border-0">
-      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg">
+      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg section-header">
         <CardTitle>
           Validate Parameters for Item Creation 
         </CardTitle>

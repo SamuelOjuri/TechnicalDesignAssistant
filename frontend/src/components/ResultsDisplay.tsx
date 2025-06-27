@@ -38,7 +38,7 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
   if (isLoading) {
     return (
       <Card className="shadow-md border-0">
-        <CardHeader className="bg-[#b82c25] text-white rounded-t-lg">
+        <CardHeader className="bg-[#b82c25] text-white rounded-t-lg section-header">
           <CardTitle>
             <span className="step-indicator">2</span> Analysis Results
           </CardTitle>
@@ -56,7 +56,7 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
   if (!results) {
     return (
       <Card className="shadow-md border-0">
-        <CardHeader className="bg-[#b82c25] text-white rounded-t-lg">
+        <CardHeader className="bg-[#b82c25] text-white rounded-t-lg section-header">
           <CardTitle>
             <span className="step-indicator">2</span> Analysis Results
           </CardTitle>
@@ -115,7 +115,7 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
 
   return (
     <Card className="shadow-md border-0 section-card">
-      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg">
+      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg section-header">
         <CardTitle>
           <span className="step-indicator">2</span> Analysis Results {enquiryType && `(${enquiryType})`}
         </CardTitle>

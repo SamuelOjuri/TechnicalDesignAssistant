@@ -250,4 +250,14 @@
   border-radius: 0.5rem;
   overflow: hidden;
   background-color: white;
+}
+
+.section-header {
+  padding: 1.00rem 1.00rem !important; /* 12px top/bottom, 24px left/right */
 } 
+
+.section-header .CardTitle,
+.section-header h3 {
+  font-size: 1.25rem !important; /* 20px - smaller than default */
+  
+}
