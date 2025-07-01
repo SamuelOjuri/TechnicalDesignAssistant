@@ -205,8 +205,8 @@ def extract_text_from_email(email_text: str, attachments_data: List[Dict], inlin
     for attachment in non_visual:
         combined_text += f"\nATTACHMENT ({attachment['filename']}) [Not processed - not a PDF or image]\n\n"
     
-    # Conservative parallel processing to avoid rate limits
-    MAX_WORKERS = 7  # Optimal based on performance testing
+    # Parallel processing 
+    MAX_WORKERS = 15  # Increased from 7 for Tier 1 performance
     # Remove BATCH_SIZE logic - let MAX_WORKERS and rate limiter handle concurrency
     BATCH_SIZE = None  # Always process all items concurrently (limited by MAX_WORKERS)
     
