@@ -13,8 +13,8 @@ class GlobalGeminiRateLimiter:
     """
     
     def __init__(self, 
-                 requests_per_minute: int = 950,  # Conservative limit
-                 max_concurrent: int = 7):       # Even more conservative
+                 requests_per_minute: int = 950,  # Increased to 950, still with safety margin
+                 max_concurrent: int = 15):       # Increased from 7 to take advantage of higher limits
         self.requests_per_minute = requests_per_minute
         self.max_concurrent = max_concurrent
         
@@ -28,13 +28,10 @@ class GlobalGeminiRateLimiter:
         
     def acquire(self) -> bool:
         """Acquire permission to make API call."""
-        # First, acquire semaphore slot
-        self._semaphore.acquire()
-        
-        # Then check rate limit
+        # Check tokens first, then acquire semaphore
         with self._lock:
             now = time.time()
-            # Refill tokens based on time passed
+            # Refill tokens
             time_passed = now - self._last_refill
             tokens_to_add = int(time_passed * self.requests_per_minute / 60)
             
@@ -42,14 +39,16 @@ class GlobalGeminiRateLimiter:
                 self._tokens = min(self.requests_per_minute, self._tokens + tokens_to_add)
                 self._last_refill = now
             
-            if self._tokens > 0:
-                self._tokens -= 1
-                logger.info(f"API call approved. Tokens remaining: {self._tokens}")
-                return True
-            else:
-                # Release semaphore if we can't get token
-                self._semaphore.release()
+            if self._tokens <= 0:
                 return False
+            
+            # Only acquire semaphore if we have tokens
+            if not self._semaphore.acquire(blocking=False):
+                return False
+            
+            self._tokens -= 1
+            logger.info(f"API call approved. Tokens remaining: {self._tokens}")
+            return True
     
     def release(self):
         """Release the semaphore slot."""

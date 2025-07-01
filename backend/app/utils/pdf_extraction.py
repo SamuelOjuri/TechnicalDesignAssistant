@@ -23,8 +23,8 @@ def should_batch_pdfs(pdf_files: List[Dict]) -> bool:
         bool: True if PDFs should be batched, False if they should be processed individually
     """
     # More permissive limits to enable batching
-    MAX_BATCH_SIZE = 50 * 1024 * 1024  # 50MB (increased from 10MB)
-    MAX_FILES_PER_BATCH = 6
+    MAX_BATCH_SIZE = 100 * 1024 * 1024  # 100MB (increased from 50MB)
+    MAX_FILES_PER_BATCH = 3
     
     total_size = sum(len(f['content']) for f in pdf_files)
     logger.info(f"PDF batch check: {len(pdf_files)} files, {total_size/1024/1024:.2f}MB total")
@@ -105,8 +105,8 @@ def process_pdfs_in_parallel(pdf_files: List[Dict]) -> str:
         return pdf_file['filename'], text
     
     results = []
-    # Reduce max_workers to be more conservative with API calls
-    with ThreadPoolExecutor(max_workers=5) as ex:  # Reduced from 10 to 5
+    # Increase max_workers for better performance on upgraded infrastructure
+    with ThreadPoolExecutor(max_workers=12) as ex:  # Increased from 5 to 12
         futures = {ex.submit(_process_single_pdf, pdf): pdf for pdf in pdf_files}
         for f in as_completed(futures):
             try:

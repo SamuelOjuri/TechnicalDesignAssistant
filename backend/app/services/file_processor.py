@@ -68,42 +68,70 @@ def process_files(files: List[Any]) -> Dict:
     
     logger.info(f"Found {len(pdf_files)} PDFs and {len(email_files)} emails")
     
-    # Process PDFs in optimized batches
+    # Process ALL PDFs in parallel (no sequential batching)
     if pdf_files:
         pdf_start = time.time()
-        BATCH_SIZE = 5
-        for i in range(0, len(pdf_files), BATCH_SIZE):
-            batch = pdf_files[i:i + BATCH_SIZE]
-            logger.info(f"Processing PDF batch {i//BATCH_SIZE + 1} of {(len(pdf_files) + BATCH_SIZE - 1)//BATCH_SIZE}")
-            batch_text = process_pdf_batch(batch)
-            all_text += f"\n{batch_text}\n{'='*50}\n"
+        logger.info(f"Processing all {len(pdf_files)} PDFs in parallel")
+        all_pdfs_text = process_pdf_batch(pdf_files)  # Process all at once
+        all_text += f"\n{all_pdfs_text}\n{'='*50}\n"
         logger.info(f"Completed PDF processing in {time.time() - pdf_start:.2f}s")
     
-    # Process emails
-    for email_file in email_files:
-        try:
-            # Process email content directly from bytes
-            header, body, attachments, inline_images = process_email_content(
-                email_file['content'],
-                email_file['filename']
-            )
-            
-            email_text = f"{header}\n{body}"
+    # Process emails in parallel using thread pool
+    if email_files:
+        email_start = time.time()
+        logger.info(f"Processing {len(email_files)} emails in parallel")
+        
+        def process_single_email(email_file):
+            try:
+                header, body, attachments, inline_images = process_email_content(
+                    email_file['content'],
+                    email_file['filename']
+                )
+                
+                email_text = f"{header}\n{body}"
+                extracted = extract_text_from_email(email_text, attachments, inline_images)
+                
+                return {
+                    'filename': email_file['filename'],
+                    'text': f"\n\nEMAIL FILE: {email_file['filename']}\n{extracted}\n{'='*50}\n",
+                    'email_data': {
+                        'email_text': email_text,
+                        'attachments_data': attachments
+                    }
+                }
+            except Exception as e:
+                logger.error(f"Error processing email {email_file['filename']}: {str(e)}")
+                return {
+                    'filename': email_file['filename'],
+                    'text': f"\n\nError processing email {email_file['filename']}: {str(e)}\n{'='*50}\n",
+                    'email_data': None
+                }
+        
+        # Replace custom ThreadPoolExecutor with context-aware thread pool
+        from ..utils.thread_pool import process_items_in_parallel
+        
+        # Convert email_files to the format expected by process_items_in_parallel
+        email_items = [('email', email_file) for email_file in email_files]
+        
+        # Process using context-aware thread pool
+        results = process_items_in_parallel(
+            email_items,
+            lambda item_type, email_file: (
+                email_file['filename'],
+                process_single_email(email_file)
+            ),
+            max_workers=min(12, len(email_files))
+        )
+        
+        # Process results
+        for filename, result in results:
+            all_text += result['text']
             
             # Store first email's data for project name extraction
-            if email_data is None:
-                email_data = {
-                    'email_text': email_text,
-                    'attachments_data': attachments
-                }
-            
-            # Process email content and attachments
-            extracted = extract_text_from_email(email_text, attachments, inline_images)
-            all_text += f"\n\nEMAIL FILE: {email_file['filename']}\n{extracted}\n{'='*50}\n"
-            
-        except Exception as e:
-            print(f"Error processing email {email_file['filename']}: {str(e)}")
-            all_text += f"\n\nError processing email {email_file['filename']}: {str(e)}\n{'='*50}\n"
+            if email_data is None and result['email_data']:
+                email_data = result['email_data']
+        
+        logger.info(f"Completed email processing in {time.time() - email_start:.2f}s")
     
     # Extract parameters and project name
     params = extract_parameters(all_text)
