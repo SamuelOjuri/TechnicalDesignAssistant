@@ -3,6 +3,7 @@ import requests
 from difflib import SequenceMatcher
 from flask import current_app
 import itertools
+from typing import Optional, BinaryIO
 
 class MondayDotComInterface:
     """Interface for interacting with Monday.com API"""
@@ -1025,3 +1026,64 @@ class MondayDotComInterface:
                 if itm["name"] == item_name:
                     return itm["id"]
         return None 
+
+    def upload_file_to_column(self, item_id: str, column_id: str, file_content: bytes, filename: str) -> Optional[dict]:
+        """
+        Upload a file to a specific column of an item.
+        
+        Args:
+            item_id: ID of the item
+            column_id: ID of the column (must be a 'file' type column)
+            file_content: Binary content of the file
+            filename: Name of the file
+            
+        Returns:
+            dict: Response from Monday.com API or None if failed
+        """
+        # Prepare the GraphQL mutation
+        mutation = """
+        mutation ($file: File!) {
+            add_file_to_column(item_id: %s, column_id: "%s", file: $file) {
+                id
+            }
+        }
+        """ % (item_id, column_id)
+        
+        # Prepare multipart form data
+        files = {
+            'variables[file]': (filename, file_content, 'application/octet-stream')
+        }
+        
+        data = {
+            'query': mutation,
+        }
+        
+        # Use the file upload endpoint
+        upload_url = "https://api.monday.com/v2/file"
+        
+        try:
+            response = requests.post(
+                upload_url,
+                headers={
+                    "Authorization": self.api_token,
+                    "API-Version": "2023-10"
+                },
+                data=data,
+                files=files,
+                timeout=60  # Longer timeout for file uploads
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if "errors" in result:
+                    print(f"GraphQL Error uploading file: {result['errors']}")
+                    return None
+                return result
+            else:
+                print(f"HTTP Error uploading file: {response.status_code}")
+                print(response.text)
+                return None
+                
+        except Exception as e:
+            print(f"Exception uploading file to Monday.com: {e}")
+            return None 
