@@ -40,6 +40,7 @@ const App: React.FC = () => {
   const [chatResetTrigger, setChatResetTrigger] = useState<number>(0);
   const [paramSources, setParamSources] = useState<ParameterSource | null>(null); // NEW
   const [showParameterValidator, setShowParameterValidator] = useState(false);
+  const [originalEmailFile, setOriginalEmailFile] = useState<File | null>(null);
 
   /**
    * Combine Monday.com params with the ones parsed from the new email.
@@ -187,6 +188,13 @@ const App: React.FC = () => {
         );
         setParamSources(emailOnlySources);
       }
+      
+      // Store the original email file
+      const emailFile = fileArray.find(
+        file => file.name.toLowerCase().endsWith('.eml') || 
+                file.name.toLowerCase().endsWith('.msg')
+      );
+      setOriginalEmailFile(emailFile || null);
       
     } catch (error) {
       console.error('Error:', error);
@@ -343,6 +351,7 @@ const App: React.FC = () => {
     setShowMondaySearch(false);
     setEnquiryType(null);
     setShowParameterValidator(false);
+    setOriginalEmailFile(null);
     
     // Clear file selection - we need to find the file input element and reset it
     const fileInput = document.querySelector('input[type="file"]');
@@ -433,6 +442,7 @@ const App: React.FC = () => {
                 extractedParams={extractedParams}
                 enquiryType={enquiryType}
                 apiBaseUrl={API_BASE_URL}
+                emailFile={originalEmailFile}  // ADD THIS LINE
                 onSuccess={() => {
                   // Optional: Handle success, maybe show a success message
                 }}

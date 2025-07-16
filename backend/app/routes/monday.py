@@ -8,6 +8,9 @@ from ..utils.monday_dot_com_interface import MondayDotComInterface
 import json
 from datetime import datetime
 import re
+import requests
+from typing import Optional, BinaryIO
+import base64
 
 monday_bp = Blueprint('monday', __name__, url_prefix='/api/monday')
 
@@ -276,6 +279,7 @@ def create_monday_item():
     """
     Create a new item in Monday.com board.
     Accepts column values by title and automatically maps to IDs.
+    Optionally uploads email file if provided.
     """
     data = request.json
     if not data:
@@ -439,11 +443,45 @@ def create_monday_item():
         
         if result and "data" in result and "create_item" in result["data"]:
             created_item = result["data"]["create_item"]
+            item_id = created_item['id']
+            
+            # Handle email file upload if provided
+            email_file_data = data.get('email_file')
+            email_column_id = data.get('email_column_id', 'file_mkpbm883')  # Default to known column ID
+            
+            upload_result = None
+            if email_file_data and email_column_id:
+                try:
+                    # Decode base64 file content
+                    file_content = base64.b64decode(email_file_data['content'])
+                    filename = email_file_data['filename']
+                    
+                    print(f"Uploading email file '{filename}' to item {item_id}, column {email_column_id}")
+                    
+                    # Upload file to Monday.com
+                    upload_result = monday.upload_file_to_column(
+                        item_id=item_id,
+                        column_id=email_column_id,
+                        file_content=file_content,
+                        filename=filename
+                    )
+                    
+                    if upload_result:
+                        print(f"Successfully uploaded email file for item {item_id}")
+                    else:
+                        print(f"Warning: Failed to upload email file for item {item_id}")
+                        
+                except Exception as e:
+                    print(f"Error uploading email file: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
             return jsonify({
                 'success': True,
-                'id': created_item['id'],
+                'id': item_id,
                 'name': created_item['name'],
-                'column_mapping_used': column_values_by_id
+                'column_mapping_used': column_values_by_id,
+                'file_uploaded': upload_result is not None
             })
         else:
             error_msg = "Failed to create item"

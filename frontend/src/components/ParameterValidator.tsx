@@ -61,13 +61,17 @@ interface ParameterValidatorProps {
   enquiryType: 'New Enquiry' | 'Amendment' | null;
   apiBaseUrl: string;
   onSuccess?: () => void;
+  emailFile?: File | null;
 }
+
+const EMAIL_COLUMN_ID = 'file_mkpbm883'; // Email column ID from Monday.com
 
 export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
   extractedParams,
   enquiryType,
   apiBaseUrl,
-  onSuccess
+  onSuccess,
+  emailFile
 }) => {
   const [parameters, setParameters] = useState<ValidatableParameter[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -160,14 +164,31 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
       const emailSubject = extractedParams?.['Email Subject'] || '';
       const cleanedItemName = cleanExtractedValue(emailSubject) || 'New Item';
 
-      const itemData = {
+      const itemData: any = {
         board_id: MONDAY_BOARD_CONFIG.boardId,
         group_id: MONDAY_BOARD_CONFIG.groupId,
         item_name: cleanedItemName,
         column_values_by_title: columnValuesByTitle
       };
+      
+      // Add email file data if available
+      if (emailFile) {
+        // Convert file to base64
+        const fileContent = await fileToBase64(emailFile);
+        itemData.email_file = {
+          filename: emailFile.name,
+          content: fileContent.split(',')[1] // Remove data:mime;base64, prefix
+        };
+        itemData.email_column_id = EMAIL_COLUMN_ID;
+      }
 
-      console.log('Sending to Monday.com:', itemData); // Debug log
+      console.log('Sending to Monday.com:', {
+        ...itemData,
+        email_file: itemData.email_file ? { 
+          filename: itemData.email_file.filename, 
+          size: emailFile?.size 
+        } : undefined
+      });
 
       const response = await fetch(`${apiBaseUrl}/api/monday/create-item`, {
         method: 'POST',
@@ -183,7 +204,13 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
       }
 
       const result = await response.json();
-      setSuccess(`Successfully created item in Monday CRM with ID: ${result.id}`);
+      let successMessage = `Successfully created item in Monday CRM with ID: ${result.id}`;
+      
+      if (result.file_uploaded === false && emailFile) {
+        successMessage += '\n\nNote: The email file could not be uploaded automatically. You may need to upload it manually.';
+      }
+      
+      setSuccess(successMessage);
       
       if (onSuccess) {
         onSuccess();
@@ -193,6 +220,16 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
     } finally {
       setIsSubmitting(false);
     }
+  };
+  
+  // Helper function to convert File to base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
   };
 
   if (!extractedParams) {
