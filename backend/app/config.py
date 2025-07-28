@@ -10,7 +10,7 @@ class Config:
     MONDAY_API_TOKEN = os.getenv('MONDAY_API_TOKEN')
     DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 't')
     GEMINI_MODEL = "gemini-2.5-flash"  # Current default model
-    MONDAY_BOARD_ID = "1825117125"  # Board ID for Tapered Enquiry Maintenance
+    MONDAY_BOARD_ID = "1825117125"  # Board ID for Tapered Enquiry Maintenance (for project search and data extraction)
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', os.path.join(os.getcwd(), 'uploads'))
     MAX_CONTENT_LENGTH = 30 * 1024 * 1024  # 30MB max file size
     

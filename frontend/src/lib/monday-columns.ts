@@ -1,3 +1,6 @@
+// Monday.com board configuration details for item creation via API
+
+// Monday.com column mapping
 export const MONDAY_COLUMN_MAPPING = {
   'Date Received': 'Date Received',
   'Hour Received': 'Hour Received', 

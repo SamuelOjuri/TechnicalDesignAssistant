@@ -48,6 +48,13 @@ def process_email_content(email_content: bytes, filename: str) -> Tuple[str, str
                 )
                 
                 body = msg.body
+
+                # DEBUG: Print extracted header and body
+                print("=== DEBUG: MSG HEADER INFO ===")
+                print(header_info)
+                print("=== DEBUG: MSG BODY (first 500 chars) ===")
+                print(body[:500] + "..." if len(body) > 500 else body)
+                print(f"=== DEBUG: MSG body length: {len(body)} characters ===")
                 
                 # Process attachments
                 attachments_data = []
@@ -96,6 +103,13 @@ def process_email_content(email_content: bytes, filename: str) -> Tuple[str, str
                     body += part.get_content() + "\n"
         else:
             body = msg.get_content()
+
+        # DEBUG: Print extracted header and body
+        print("=== DEBUG: EML HEADER INFO ===")
+        print(header_info)
+        print("=== DEBUG: EML BODY (first 500 chars) ===")
+        print(body[:500] + "..." if len(body) > 500 else body)
+        print(f"=== DEBUG: EML body length: {len(body)} characters ===")
         
         # Process attachments
         attachments_data = []

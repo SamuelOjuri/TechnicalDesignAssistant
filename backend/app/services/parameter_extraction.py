@@ -21,7 +21,7 @@ def extract_parameters(all_text, enquiry_type=None):
             - Drawing Reference: (TaperedPlus Reference Number e.g. TP*****_**.** - *. Look for references associated with TaperedPlus specifically. If multiple exist, prioritize the latest one mentioned in the context of the request *to* TaperedPlus).
             - Drawing Title (The Project Name, usually the project location).
             - Revision (Suffix of the drawing reference e.g. **.** - A. If multiple exist, use the one associated with the Drawing Reference identified above).
-            - Date Received: (Date the email requesting the service *from TaperedPlus* was sent. In a forwarded email chain, this is the date the email was sent *to TaperedPlus*, not the date of the original email further down the chain).
+            - Date Received: (Date the email requesting the service *from TaperedPlus* was sent by the client. In a forwarded email chain, this is the date the email was *sent to TaperedPlus*, NOT the date of the original email further down the chain).
             - Hour Received: (Local time the email was sent *to TaperedPlus*. Use 24-hour format, e.g. 14:23).
             - Company: (Identify the company *directly requesting* technical drawings or services *from TaperedPlus*. In a forwarded email, this is the company of the person *sending the email to TaperedPlus*, NOT the company of the original sender further down the chain. Look for the company directly communicating with TaperedPlus).
             - Contact: (Identify the contact person *directly requesting* the job or drawings *from TaperedPlus*. In a forwarded email, this is the person *sending the email to TaperedPlus*, NOT the original sender further down the chain. Look for the individual directly communicating with TaperedPlus).
@@ -84,6 +84,27 @@ def extract_parameters(all_text, enquiry_type=None):
                     val = cleaned_value
         
         df_row[p] = val
+
+    ##################
+
+    # NEW: Programmatically override Date Received and Hour Received from all_text header
+    # Find the first "Date:" line in the EMAIL CONTENT section
+    date_match = re.search(r"EMAIL CONTENT:\s*From:.*?\nTo:.*?\nSubject:.*?\nDate:\s*(.+?)\s*(?:\n|$)", all_text, re.DOTALL | re.I)
+    if date_match:
+        full_date_str = date_match.group(1).strip()
+        try:
+            # Parse date (e.g., "Wed, 16 Jul 2025 09:42:39 +0100") into components
+            # Extract date part (e.g., "16 Jul 2025")
+            date_received = re.search(r"\d{1,2} \w{3} \d{4}", full_date_str).group(0)
+            # Extract time part (e.g., "09:42")
+            hour_received = re.search(r"\d{2}:\d{2}", full_date_str).group(0)
+            
+            df_row["Date Received"] = date_received
+            df_row["Hour Received"] = hour_received
+        except (AttributeError, IndexError):
+            pass  # If parsing fails, retain LLM value or set to "Not found"
+
+    ##################
     
     # Override the Reason for Change if enquiry_type was explicitly provided
     if enquiry_type:
