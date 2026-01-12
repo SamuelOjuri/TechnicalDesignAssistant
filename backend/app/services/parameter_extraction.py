@@ -55,9 +55,9 @@ def extract_parameters(all_text, enquiry_type=None):
         "Surveyor", "Target U-Value", "Target Min U-Value", 
         "Fall of Tapered", "Tapered Insulation", "Decking"
     ]:
-        m = re.search(rf"{p}:?\s*(.*?)(?:\n|$)", resp, re.I)
+        # Accept both "Key: value" and "Key : value"
+        m = re.search(rf"{p}\s*:?\s*(.*?)(?:\n|$)", resp, re.I)
         val = m.group(1).strip() if m else "Not found"
-        
         # Remove leading asterisks from all values
         val = re.sub(r'^\*+\s*', '', val)
         

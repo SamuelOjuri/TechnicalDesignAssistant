@@ -8,7 +8,7 @@ import { MONDAY_COLUMN_MAPPING, MONDAY_BOARD_CONFIG } from '../lib/monday-column
 
 const formatDateForMonday = (dateString: string): string => {
   if (!dateString) return '';
-  
+
   // Parse DD/MM/YYYY or DD-MM-YYYY format
   const ddMmYyyyRegex = /^(\d{2})[/-](\d{2})[/-](\d{4})$/;
   const match = dateString.match(ddMmYyyyRegex);
@@ -16,34 +16,34 @@ const formatDateForMonday = (dateString: string): string => {
     const [, day, month, year] = match;
     return `${year}-${month}-${day}`;
   }
-  
+
   // If already in YYYY-MM-DD format, return as-is
   const yyyyMmDdRegex = /^\d{4}-\d{2}-\d{2}$/;
   if (yyyyMmDdRegex.test(dateString)) {
     return dateString;
   }
-  
+
   return dateString;
 };
 
 // Add value cleaning function
 const cleanExtractedValue = (value: string): string => {
   if (!value) return '';
-  
+
   // Remove patterns like ': value' or '": "value",' to just 'value'
   // First try to match pattern with quotes around value
   const quotedMatch = value.match(/["']?\s*:\s*["']([^"']+)["']/);
   if (quotedMatch) {
     return quotedMatch[1].trim();
   }
-  
+
   // Then try to match pattern where colon appears at the start (after optional quotes/whitespace)
   // But not if it looks like a time format (digits:digits)
   const colonMatch = value.match(/^["']?\s*:\s*(.+?)[\s,]*$/);
   if (colonMatch && !value.match(/^\d+:\d+/)) {
     return colonMatch[1].trim();
   }
-  
+
   // If no pattern matches, just strip quotes and whitespace
   return value.replace(/^["'\s]+|["'\s,]+$/g, '');
 };
@@ -56,12 +56,17 @@ interface ValidatableParameter {
   editable: boolean;
 }
 
+interface ParameterSource {
+  [key: string]: 'Email Content' | 'Monday CRM' | 'Business Rule';
+}
+
 interface ParameterValidatorProps {
   extractedParams: Record<string, string> | null;
   enquiryType: 'New Enquiry' | 'Amendment' | null;
   apiBaseUrl: string;
   onSuccess?: () => void;
   emailFile?: File | null;
+  paramSources?: ParameterSource | null;
 }
 
 const EMAIL_COLUMN_ID = 'file_mkpbm883'; // Email column ID from Monday.com
@@ -71,7 +76,8 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
   enquiryType,
   apiBaseUrl,
   onSuccess,
-  emailFile
+  emailFile,
+  paramSources,
 }) => {
   const [parameters, setParameters] = useState<ValidatableParameter[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -88,21 +94,21 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
         displayName: 'Date Received',
         value: cleanExtractedValue(extractedParams['Date Received'] || ''),
         mondayColumnTitle: MONDAY_COLUMN_MAPPING['Date Received'],
-        editable: true
+        editable: true,
       },
       {
         key: 'Hour Received',
         displayName: 'Hour Received',
         value: cleanExtractedValue(extractedParams['Hour Received'] || ''),
         mondayColumnTitle: MONDAY_COLUMN_MAPPING['Hour Received'],
-        editable: true
+        editable: true,
       },
       {
         key: 'Post Code',
         displayName: 'Post Code',
         value: cleanExtractedValue(extractedParams['Post Code'] || ''),
         mondayColumnTitle: MONDAY_COLUMN_MAPPING['Post Code'],
-        editable: true
+        editable: true,
       },
       // Add the enquiry type parameter
       {
@@ -110,8 +116,8 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
         displayName: 'New Enq / Amend',
         value: enquiryType || '',
         mondayColumnTitle: MONDAY_COLUMN_MAPPING['New Enq / Amend'],
-        editable: false // Not editable since it's based on user selection
-      }
+        editable: false, // Not editable since it's based on user selection
+      },
     ];
 
     // Add Drawing Reference (TP Ref) for amendments
@@ -119,7 +125,7 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
       // Extract numeric part before first underscore
       const cleanedDrawingRef = cleanExtractedValue(extractedParams['Drawing Reference']);
       const tpRef = cleanedDrawingRef.split('_')[0];
-      
+
       // Only add if we have a valid TP Ref value
       if (tpRef && tpRef !== 'Not provided' && tpRef !== 'Not found') {
         validatableParams.push({
@@ -127,7 +133,7 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
           displayName: 'TP Ref',
           value: tpRef,
           mondayColumnTitle: MONDAY_COLUMN_MAPPING['Drawing Reference'],
-          editable: false // Not editable since it's derived
+          editable: false, // Not editable since it's derived
         });
       }
     }
@@ -150,12 +156,12 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
       // Prepare the data for Monday.com using column titles
       const columnValuesByTitle = parameters.reduce((acc, param) => {
         let value = param.value;
-        
+
         // Format date values to YYYY-MM-DD before sending
         if (param.key === 'Date Received' && value) {
           value = formatDateForMonday(value);
         }
-        
+
         acc[param.mondayColumnTitle] = value;
         return acc;
       }, {} as Record<string, string>);
@@ -168,26 +174,31 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
         board_id: MONDAY_BOARD_CONFIG.boardId,
         group_id: MONDAY_BOARD_CONFIG.groupId,
         item_name: cleanedItemName,
-        column_values_by_title: columnValuesByTitle
+        column_values_by_title: columnValuesByTitle,
+        ai_data_params: extractedParams,
+        ai_data_sources: paramSources || {},
+        ai_data_column_id: MONDAY_BOARD_CONFIG.aiDataColumnId,
       };
-      
+
       // Add email file data if available
       if (emailFile) {
         // Convert file to base64
         const fileContent = await fileToBase64(emailFile);
         itemData.email_file = {
           filename: emailFile.name,
-          content: fileContent.split(',')[1] // Remove data:mime;base64, prefix
+          content: fileContent.split(',')[1], // Remove data:mime;base64, prefix
         };
         itemData.email_column_id = EMAIL_COLUMN_ID;
       }
 
       console.log('Sending to Monday.com:', {
         ...itemData,
-        email_file: itemData.email_file ? { 
-          filename: itemData.email_file.filename, 
-          size: emailFile?.size 
-        } : undefined
+        email_file: itemData.email_file
+          ? {
+              filename: itemData.email_file.filename,
+              size: emailFile?.size,
+            }
+          : undefined,
       });
 
       const response = await fetch(`${apiBaseUrl}/api/monday/create-item`, {
@@ -205,13 +216,24 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
 
       const result = await response.json();
       let successMessage = `Successfully created item in Monday CRM with ID: ${result.id}`;
-      
-      if (result.file_uploaded === false && emailFile) {
-        successMessage += '\n\nNote: The email file could not be uploaded automatically. You may need to upload it manually.';
+
+      // Email file upload warning
+      if (emailFile && result.file_uploaded === false) {
+        successMessage +=
+          '\n\nNote: The email file could not be uploaded automatically. You may need to upload it manually.';
       }
-      
+
+      // AI Data CSV upload warning (new behavior)
+      if (result.ai_data_uploaded === false) {
+        const colInfo = result.ai_data_column_id_used
+          ? ` (column: ${result.ai_data_column_id_used})`
+          : '';
+        successMessage +=
+          `\n\nNote: The AI Data CSV could not be uploaded automatically${colInfo}. You may need to upload it manually.`;
+      }
+
       setSuccess(successMessage);
-      
+
       if (onSuccess) {
         onSuccess();
       }
@@ -221,7 +243,7 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
       setIsSubmitting(false);
     }
   };
-  
+
   // Helper function to convert File to base64
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -249,7 +271,7 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        
+
         {success && (
           <Alert className="mb-4 bg-green-50 border-green-200">
             <AlertDescription className="text-green-800">{success}</AlertDescription>

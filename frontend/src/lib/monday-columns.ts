@@ -12,7 +12,8 @@ export const MONDAY_COLUMN_MAPPING = {
 export const MONDAY_BOARD_CONFIG = {
   boardId: 1882196103, // was 1977397150
   groupId: 'group_mkpbd6vy', // was 'group_mkrbr4jr'
-  emailColumnId: 'file_mkpbm883'  
+  emailColumnId: 'file_mkpbm883',
+  aiDataColumnId: 'file_mkza7y37', // AI Data column (file column)  
 } as const;
 
 // Column IDs for reference
@@ -30,5 +31,6 @@ export const MONDAY_COLUMN_IDS = {
   projectName: 'lookup_mkpb44am',
   zipCode: 'dropdown_mkpbafca',
   dateCompleted: 'date_mkqx70pe',
-  hourCompleted: 'hour_mkqxbfgv'
+  hourCompleted: 'hour_mkqxbfgv',
+  aiData: 'file_mkza7y37' // AI Data column (file)
 } as const;
