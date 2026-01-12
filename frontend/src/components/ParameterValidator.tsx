@@ -56,12 +56,17 @@ interface ValidatableParameter {
   editable: boolean;
 }
 
+interface ParameterSource {
+  [key: string]: 'Email Content' | 'Monday CRM' | 'Business Rule';
+}
+
 interface ParameterValidatorProps {
   extractedParams: Record<string, string> | null;
   enquiryType: 'New Enquiry' | 'Amendment' | null;
   apiBaseUrl: string;
   onSuccess?: () => void;
   emailFile?: File | null;
+  paramSources?: ParameterSource | null;
 }
 
 const EMAIL_COLUMN_ID = 'file_mkpbm883'; // Email column ID from Monday.com
@@ -71,7 +76,8 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
   enquiryType,
   apiBaseUrl,
   onSuccess,
-  emailFile
+  emailFile,
+  paramSources, 
 }) => {
   const [parameters, setParameters] = useState<ValidatableParameter[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -168,7 +174,10 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
         board_id: MONDAY_BOARD_CONFIG.boardId,
         group_id: MONDAY_BOARD_CONFIG.groupId,
         item_name: cleanedItemName,
-        column_values_by_title: columnValuesByTitle
+        column_values_by_title: columnValuesByTitle,
+        ai_data_params: extractedParams,                    // full results map
+        ai_data_sources: paramSources || {},                
+        ai_data_column_id: MONDAY_BOARD_CONFIG.aiDataColumnId, // stable ID
       };
       
       // Add email file data if available
@@ -206,8 +215,23 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
       const result = await response.json();
       let successMessage = `Successfully created item in Monday CRM with ID: ${result.id}`;
       
-      if (result.file_uploaded === false && emailFile) {
-        successMessage += '\n\nNote: The email file could not be uploaded automatically. You may need to upload it manually.';
+      // if (result.file_uploaded === false && emailFile) {
+      //   successMessage += '\n\nNote: The email file could not be uploaded automatically. You may need to upload it manually.';
+      // }
+
+      // Email file upload warning
+      if (emailFile && result.file_uploaded === false) {
+        successMessage +=
+          '\n\nNote: The email file could not be uploaded automatically. You may need to upload it manually.';
+      }
+
+      // AI Data CSV upload warning (new behavior)
+      if (result.ai_data_uploaded === false) {
+        const colInfo = result.ai_data_column_id_used
+          ? ` (column: ${result.ai_data_column_id_used})`
+          : '';
+        successMessage +=
+          `\n\nNote: The AI Data CSV could not be uploaded automatically${colInfo}. You may need to upload it manually.`;
       }
       
       setSuccess(successMessage);

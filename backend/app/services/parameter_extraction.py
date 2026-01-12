@@ -48,41 +48,39 @@ def extract_parameters(all_text, enquiry_type=None):
     resp = query_llm(all_text, formatted_query)
     
     # Parse the response into structured data
+
     df_row = {}
+
     for p in [
-        "Email Subject", "Post Code", "Drawing Reference", "Drawing Title", "Revision", 
-        "Date Received", "Hour Received", "Company", "Contact", "Reason for Change", 
-        "Surveyor", "Target U-Value", "Target Min U-Value", 
+        "Email Subject", "Post Code", "Drawing Reference", "Drawing Title", "Revision",
+        "Date Received", "Hour Received", "Company", "Contact", "Reason for Change",
+        "Surveyor", "Target U-Value", "Target Min U-Value",
         "Fall of Tapered", "Tapered Insulation", "Decking"
     ]:
-        m = re.search(rf"{p}:?\s*(.*?)(?:\n|$)", resp, re.I)
+        # Accept both "Key: value" and "Key : value"
+        m = re.search(rf"{p}\s*:?\s*(.*?)(?:\n|$)", resp, re.I)
         val = m.group(1).strip() if m else "Not found"
-        
+
         # Remove leading asterisks from all values
         val = re.sub(r'^\*+\s*', '', val)
-        
+
         # Special processing for specific parameters
         if p == "Tapered Insulation":
             val = map_tapered_insulation_value(val)
-        # For Post Code, extract just the postcode area (initial letters)
         elif p == "Post Code":
-            # First clean up any formatting from the LLM response
             cleaned_value = re.sub(r'^\s*of Project Location:?\*?\s*', '', val, flags=re.IGNORECASE)
             cleaned_value = cleaned_value.strip()
-            
-            # Check if the value indicates "not provided" or similar
+
             if re.search(r'not\s+provided|not\s+found|none', cleaned_value, re.IGNORECASE):
                 val = "Not provided"
             else:
-                # Define UK postcode pattern
                 uk_postcode_pattern = r'([A-Z]{1,2})[0-9]'
                 postcode_match = re.search(uk_postcode_pattern, cleaned_value.upper())
                 if postcode_match:
                     val = postcode_match.group(1)
                 else:
-                    # Keep original value if it doesn't match a postcode pattern
                     val = cleaned_value
-        
+
         df_row[p] = val
 
     ##################

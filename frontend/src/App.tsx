@@ -41,6 +41,8 @@ const App: React.FC = () => {
   const [paramSources, setParamSources] = useState<ParameterSource | null>(null); // NEW
   const [showParameterValidator, setShowParameterValidator] = useState(false);
   const [originalEmailFile, setOriginalEmailFile] = useState<File | null>(null);
+  // SNAPSHOT for validator params
+  const [validatorParams, setValidatorParams] = useState<Parameter | null>(null);
 
   /**
    * Combine Monday.com params with the ones parsed from the new email.
@@ -338,7 +340,16 @@ const App: React.FC = () => {
     }
   };
 
+  // Compute whether validator can be shown (exactly when amendments/new enquiry params shown & loaded)
+  const canCreateMondayItem =
+    Boolean(extractedParams) &&
+    !isLoadingResults &&
+    !showMondaySearch;
+
+  // Only allow showValidator when we're ready, and snapshot the params
   const handleShowValidator = () => {
+    if (!canCreateMondayItem || !extractedParams) return;
+    setValidatorParams(extractedParams);
     setShowParameterValidator(true);
   };
 
@@ -352,7 +363,8 @@ const App: React.FC = () => {
     setEnquiryType(null);
     setShowParameterValidator(false);
     setOriginalEmailFile(null);
-    
+    setValidatorParams(null); // also clear snapshot
+
     // Clear file selection - we need to find the file input element and reset it
     const fileInput = document.querySelector('input[type="file"]');
     if (fileInput) {
@@ -432,19 +444,22 @@ const App: React.FC = () => {
               extractedText={extractedText ?? ''}
               isLoading={isLoadingResults}
               apiBaseUrl={API_BASE_URL}
-              onShowValidator={handleShowValidator}
+              onShowValidator={canCreateMondayItem ? handleShowValidator : undefined}
             />
           </div>
           
           {showParameterValidator && extractedParams && (
             <div className="section-container">
               <ParameterValidator
-                extractedParams={extractedParams}
+                extractedParams={validatorParams ?? extractedParams}
                 enquiryType={enquiryType}
                 apiBaseUrl={API_BASE_URL}
-                emailFile={originalEmailFile}  // ADD THIS LINE
+                emailFile={originalEmailFile}
+                paramSources={paramSources}
                 onSuccess={() => {
                   // Optional: Handle success, maybe show a success message
+                  // setShowParameterValidator(false);
+                  // setValidatorParams(null);
                 }}
               />
             </div>

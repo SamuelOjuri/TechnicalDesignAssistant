@@ -9,7 +9,9 @@ import json
 from datetime import datetime
 import re
 import requests
-from typing import Optional, BinaryIO
+import csv
+import io
+from typing import Any, Dict, Optional
 import base64
 
 monday_bp = Blueprint('monday', __name__, url_prefix='/api/monday')
@@ -148,24 +150,25 @@ def get_board_columns(board_id):
 def clean_extracted_value(value):
     """
     Clean extracted values that may have extra formatting characters.
-    Removes patterns like '": "value",' to just 'value'
+    Removes patterns like '": "value",' to just 'value', and strips leading ':' artifacts.
     """
     if not value:
         return value
-    
+
     # Convert to string if not already
     value_str = str(value)
-    
-    # Remove common patterns from malformed extraction
-    # Pattern: '": "actual_value",' or variations
-    
+
+    # Defensive: strip leading colon artifacts like ": Axter Ltd"
+    value_str = re.sub(r'^\s*:\s*', '', value_str)
+
     # Try to extract the actual value from patterns like '": "value",'
     match = re.search(r'["\']?\s*:\s*["\']([^"\']+)["\']', value_str)
     if match:
         return match.group(1).strip()
-    
+
     # If no pattern matches, just strip quotes and whitespace
     return value_str.strip(' "\',')
+
 
 def format_date_for_monday(date_string):
     """
@@ -274,6 +277,62 @@ def format_dropdown_for_monday(value, settings_str):
         print(f"Warning: Could not parse dropdown settings: {settings_str}")
         return None
 
+# Prefer the canonical parameter order used by backend/app/services/parameter_extraction.py
+CANONICAL_PARAM_ORDER = [
+    "Email Subject",
+    "Post Code",
+    "Drawing Reference",
+    "Drawing Title",
+    "Revision",
+    "Date Received",
+    "Hour Received",
+    "Company",
+    "Contact",
+    "Reason for Change",
+    "Surveyor",
+    "Target U-Value",
+    "Target Min U-Value",
+    "Fall of Tapered",
+    "Tapered Insulation",
+    "Decking",
+]
+
+def build_ai_data_csv_bytes(
+    ai_data_params: Dict[str, Any],
+    ai_data_sources: Optional[Dict[str, Any]] = None
+) -> bytes:
+    """
+    Build a CSV (Parameter,Value,Source) as UTF-8 bytes.
+    Canonical parameters first, then any extras (sorted) for deterministic output.
+    Backward compatible: if sources missing, Source column is blank.
+    """
+    if not isinstance(ai_data_params, dict) or not ai_data_params:
+        return b""
+
+    sources = ai_data_sources if isinstance(ai_data_sources, dict) else {}
+
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf)
+    writer.writerow(["Parameter", "Value", "Source"])
+
+    seen = set()
+
+    # 1) canonical order first
+    for key in CANONICAL_PARAM_ORDER:
+        if key in ai_data_params:
+            val = ai_data_params.get(key, "")
+            src = sources.get(key, "")
+            writer.writerow([key, clean_extracted_value(val), src])
+            seen.add(key)
+
+    # 2) extras next
+    for key in sorted(k for k in ai_data_params.keys() if k not in seen):
+        val = ai_data_params.get(key, "")
+        src = sources.get(key, "")
+        writer.writerow([key, clean_extracted_value(val), src])
+
+    return buf.getvalue().encode("utf-8")
+
 @monday_bp.route('/create-item', methods=['POST'])
 def create_monday_item():
     """
@@ -284,19 +343,27 @@ def create_monday_item():
     data = request.json
     if not data:
         return jsonify({'error': 'No data provided'}), 400
-    
+
     required_fields = ['board_id', 'group_id', 'item_name', 'column_values_by_title']
     for field in required_fields:
         if field not in data:
             return jsonify({'error': f'Missing required field: {field}'}), 400
-    
+
+    # handle ai_data_params/ai_data_csv_bytes 
+    ai_data_params = data.get("ai_data_params") or {}
+    ai_data_sources = data.get("ai_data_sources") or {}
+    ai_data_csv_bytes = (
+        build_ai_data_csv_bytes(ai_data_params, ai_data_sources)
+        if isinstance(ai_data_params, dict) else b""
+    )
+
     monday_api_token = current_app.config['MONDAY_API_TOKEN']
     if not monday_api_token:
         return jsonify({'error': 'Monday.com API token not configured'}), 500
-    
+
     try:
         monday = MondayDotComInterface(monday_api_token)
-        
+
         # First, get the column mapping for this board
         board_id = data['board_id']
         query = """
@@ -311,15 +378,15 @@ def create_monday_item():
             }
         }
         """
-        
+
         variables = {"boardId": board_id}
         result = monday.execute_query(query, variables)
-        
+
         if not result or "data" not in result:
             return jsonify({'error': 'Failed to fetch board columns'}), 500
-        
+
         columns = result["data"]["boards"][0]["columns"]
-        
+
         # Create mappings for both title->id and id->type
         title_to_id = {}
         id_to_type = {}
@@ -328,11 +395,11 @@ def create_monday_item():
             title_to_id[col["title"]] = col["id"]
             id_to_type[col["id"]] = col["type"]
             id_to_settings[col["id"]] = col.get("settings_str", "{}")
-        
+
         # Map the column values from titles to IDs and format them properly
         column_values_by_id = {}
         column_values_by_title = data['column_values_by_title']
-        
+
         for title, value in column_values_by_title.items():
             if title not in title_to_id:
                 print(f"Unknown column title '{title}' – skipping")
@@ -359,7 +426,7 @@ def create_monday_item():
                     settings = json.loads(settings_str)
                     linked_board = settings.get("boardIds", [])
                     print(f"Linked boards from settings: {linked_board}")
-                    
+
                     if not linked_board:
                         print("No linked board id in settings – skipping TP Ref")
                         continue
@@ -370,7 +437,7 @@ def create_monday_item():
                     print(f"Searching for item '{cleaned}' on board {linked_board_id}")
                     item_id = monday.get_item_id_by_exact_name(linked_board_id, cleaned)
                     print(f"Search result: item_id = {item_id}")
-                    
+
                     if item_id is None:
                         print(f"No exact match for TP Ref '{cleaned}' on board {linked_board_id}")
                         # Nothing is added – the column is simply omitted
@@ -413,7 +480,7 @@ def create_monday_item():
 
         # Debug log to see what we're sending
         print(f"Column values being sent to Monday.com: {column_values_by_id}")
-        
+
         # Create the item with mapped column IDs
         mutation = """
         mutation ($boardId: ID!, $groupId: String!, $itemName: String!, $columnValues: JSON!) {
@@ -428,36 +495,36 @@ def create_monday_item():
             }
         }
         """
-        
+
         # Clean the item name as well
         item_name = clean_extracted_value(data['item_name']) if data['item_name'] else 'New Item'
-        
+
         variables = {
             "boardId": board_id,
             "groupId": data['group_id'],
             "itemName": item_name,
             "columnValues": json.dumps(column_values_by_id)
         }
-        
+
         result = monday.execute_query(mutation, variables)
-        
+
         if result and "data" in result and "create_item" in result["data"]:
             created_item = result["data"]["create_item"]
             item_id = created_item['id']
-            
+
             # Handle email file upload if provided
             email_file_data = data.get('email_file')
             email_column_id = data.get('email_column_id', 'file_mkpbm883')  # Default to known column ID
-            
+
             upload_result = None
             if email_file_data and email_column_id:
                 try:
                     # Decode base64 file content
                     file_content = base64.b64decode(email_file_data['content'])
                     filename = email_file_data['filename']
-                    
+
                     print(f"Uploading email file '{filename}' to item {item_id}, column {email_column_id}")
-                    
+
                     # Upload file to Monday.com
                     upload_result = monday.upload_file_to_column(
                         item_id=item_id,
@@ -465,30 +532,77 @@ def create_monday_item():
                         file_content=file_content,
                         filename=filename
                     )
-                    
+
                     if upload_result:
                         print(f"Successfully uploaded email file for item {item_id}")
                     else:
                         print(f"Warning: Failed to upload email file for item {item_id}")
-                        
+
                 except Exception as e:
                     print(f"Error uploading email file: {e}")
                     import traceback
                     traceback.print_exc()
-            
+
+            # -------------------- AI Data CSV upload (NEW) --------------------
+            ai_data_upload_result = None
+
+            # Prefer stable ID; allow frontend to override (optional)
+            ai_data_column_id = data.get("ai_data_column_id", "file_mkza7y37")
+            ai_data_column_title = data.get("ai_data_column_title", "AI Data")
+
+            def resolve_ai_data_column_id() -> Optional[str]:
+                # 1) Prefer known/provided ID if it exists and is a file column
+                if ai_data_column_id in id_to_type and id_to_type[ai_data_column_id] == "file":
+                    return ai_data_column_id
+                # 2) Fallback: resolve by title if present and is a file column
+                if ai_data_column_title in title_to_id:
+                    cid = title_to_id[ai_data_column_title]
+                    if id_to_type.get(cid) == "file":
+                        return cid
+                return None
+
+            resolved_ai_col_id = resolve_ai_data_column_id()
+
+            if ai_data_csv_bytes and resolved_ai_col_id:
+                try:
+                    csv_filename = f"AI_Data_{item_id}.csv"
+                    print(f"Uploading AI Data CSV '{csv_filename}' to item {item_id}, column {resolved_ai_col_id}")
+                    ai_data_upload_result = monday.upload_file_to_column(
+                        item_id=item_id,
+                        column_id=resolved_ai_col_id,
+                        file_content=ai_data_csv_bytes,
+                        filename=csv_filename
+                    )
+                    if ai_data_upload_result:
+                        print(f"Successfully uploaded AI Data CSV for item {item_id}")
+                    else:
+                        print(f"Warning: Failed to upload AI Data CSV for item {item_id}")
+                except Exception as e:
+                    print(f"Error uploading AI Data CSV: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                if not ai_data_csv_bytes:
+                    print("No ai_data_csv_bytes to upload (ai_data_params missing/empty?)")
+                if not resolved_ai_col_id:
+                    print(f"AI Data column not found or not a file column (id={ai_data_column_id}, title={ai_data_column_title})")
+            # ------------------------------------------------------------------
+
             return jsonify({
                 'success': True,
                 'id': item_id,
                 'name': created_item['name'],
                 'column_mapping_used': column_values_by_id,
-                'file_uploaded': upload_result is not None
+                'file_uploaded': upload_result is not None,
+                'ai_data_uploaded': ai_data_upload_result is not None,
+                'ai_data_column_id_used': resolved_ai_col_id
             })
         else:
             error_msg = "Failed to create item"
             if result and "errors" in result:
                 error_msg = f"Monday.com API error: {result['errors']}"
             return jsonify({'error': error_msg}), 500
-            
+
     except Exception as e:
         print(f"Error creating Monday.com item: {e}")
         import traceback
