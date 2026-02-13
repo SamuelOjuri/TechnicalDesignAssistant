@@ -22,47 +22,54 @@ def with_app_context(app: Flask, func: Callable) -> Callable:
     return wrapper
 
 def process_items_in_parallel(
-    items: List[Tuple[str, Any]], 
-    process_func: Callable, 
+    items: List[Tuple[str, Any]],
+    process_func: Callable,
     max_workers: int = 15,  # Increased from 7
     batch_size: int = None  # Optional batch size for large sets
 ) -> List[Tuple[str, Any]]:
     """
     Process items in parallel using a thread pool.
-    
+
     Args:
         items: List of (type, item) tuples to process
         process_func: Function that processes a single item
         max_workers: Maximum number of worker threads
         batch_size: Optional size for processing in batches
-        
+
     Returns:
         List of (filename, processed_text) tuples
     """
     all_results = []
+
+    # Guard: ThreadPoolExecutor cannot be created with 0 workers.
+    if not items:
+        logger.info("No items to process; skipping parallel execution")
+        return all_results
+
     app = current_app._get_current_object()
-    
+    safe_max_workers = max(1, int(max_workers or 1))
+
     def run_with_context(*args, **kwargs):
         with app.app_context():
             start_time = time.time()
             result = process_func(*args, **kwargs)
             logger.info(f"Thread completed processing in {time.time() - start_time:.2f}s")
             return result
-    
+
     # Process items in batches if batch_size is specified
     if batch_size:
         for i in range(0, len(items), batch_size):
             batch = items[i:i + batch_size]
             logger.info(f"Processing batch {i//batch_size + 1} of {(len(items) + batch_size - 1)//batch_size}")
             batch_results = []
-            
-            with ThreadPoolExecutor(max_workers=min(max_workers, len(batch))) as executor:
+            batch_workers = min(safe_max_workers, len(batch))
+            with ThreadPoolExecutor(max_workers=batch_workers) as executor:
                 # Submit all jobs in this batch simultaneously
                 future_to_item = {
                     executor.submit(run_with_context, item_type, item): (item_type, item)
                     for item_type, item in batch
                 }
-                
+
                 # Wait for all futures to complete
                 for future in as_completed(future_to_item):
                     item_type, item = future_to_item[future]
@@ -82,18 +89,19 @@ def process_items_in_parallel(
                             filename,
                             f"Error processing file: {str(e)}"
                         ))
-            
+
             all_results.extend(batch_results)
     else:
         # Process all items at once - optimized for ≤10 items
         logger.info(f"Processing all {len(items)} items concurrently")
-        with ThreadPoolExecutor(max_workers=min(max_workers, len(items))) as executor:
+        worker_count = min(safe_max_workers, len(items))
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
             # Submit all jobs simultaneously
             future_to_item = {
                 executor.submit(run_with_context, item_type, item): (item_type, item)
                 for item_type, item in items
             }
-            
+
             # Wait for all futures to complete
             for future in as_completed(future_to_item):
                 item_type, item = future_to_item[future]
@@ -113,5 +121,5 @@ def process_items_in_parallel(
                         filename,
                         f"Error processing file: {str(e)}"
                     ))
-    
+
     return all_results

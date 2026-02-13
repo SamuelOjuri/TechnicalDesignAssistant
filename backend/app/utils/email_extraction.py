@@ -3,7 +3,6 @@ from email.parser import BytesParser
 from email import policy
 import extract_msg
 import io
-from flask import current_app
 from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 from typing import Tuple, Dict, List, Union, BinaryIO
@@ -176,18 +175,17 @@ def extract_text_from_email(email_text: str, attachments_data: List[Dict], inlin
     """Extract text from email and process attachments in parallel."""
     logger.info("Starting email attachment processing")
     start_time = time.time()
-    
     combined_text = f"EMAIL CONTENT:\n{email_text}\n\n"
-    
+
     # Prepare visual items for processing
     visual_items = []
-    
+
     # Sort PDFs by size (process smaller files first)
     pdf_attachments = sorted(
         [att for att in attachments_data if att['filename'].lower().endswith('.pdf')],
         key=lambda x: len(x['content'])
     )
-    
+
     # Decide once whether they can be submitted together
     if pdf_attachments and should_batch_pdfs(pdf_attachments):
         visual_items.append(('pdf_batch', pdf_attachments))
@@ -195,44 +193,41 @@ def extract_text_from_email(email_text: str, attachments_data: List[Dict], inlin
     else:
         visual_items.extend(('pdf', pdf) for pdf in pdf_attachments)
         logger.info(f"Added {len(pdf_attachments)} individual PDFs")
-    
+
     # Add image attachments
     image_attachments = [
         att for att in attachments_data
-        if any(att['filename'].lower().endswith(ext) 
+        if any(att['filename'].lower().endswith(ext)
                for ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp'))
     ]
     visual_items.extend(('image', img) for img in image_attachments)
-    
+
     # Add inline images
     if inline_images:
         visual_items.extend(('inline', img) for img in inline_images)
-    
+
     logger.info(f"Found {len(visual_items)} visual items to process")
-    
+
     # Process non-visual attachments
     non_visual = [
-        att for att in attachments_data 
-        if not any(att['filename'].lower().endswith(ext) 
-                  for ext in ('.pdf', '.jpg', '.jpeg', '.png', '.gif', '.bmp'))
+        att for att in attachments_data
+        if not any(att['filename'].lower().endswith(ext)
+                   for ext in ('.pdf', '.jpg', '.jpeg', '.png', '.gif', '.bmp'))
     ]
+
     for attachment in non_visual:
         combined_text += f"\nATTACHMENT ({attachment['filename']}) [Not processed - not a PDF or image]\n\n"
-    
-    # Parallel processing 
+
+    # Parallel processing
     MAX_WORKERS = 15  # Increased from 7 for Tier 1 performance
     # Remove BATCH_SIZE logic - let MAX_WORKERS and rate limiter handle concurrency
     BATCH_SIZE = None  # Always process all items concurrently (limited by MAX_WORKERS)
-    
+
     logger.info(f"Processing with MAX_WORKERS={MAX_WORKERS}, BATCH_SIZE={BATCH_SIZE}")
-    
-    # Get app context
-    app = current_app._get_current_object()
-    
+
     def _process_visual(item_type: str, item: Union[Dict, List[Dict]]) -> Tuple[str, str]:
         """Process a single visual item or batch."""
         item_start = time.time()
-        
         try:
             if item_type == 'pdf_batch':
                 total_size = sum(len(pdf['content']) for pdf in item) / (1024 * 1024)
@@ -266,29 +261,34 @@ def extract_text_from_email(email_text: str, attachments_data: List[Dict], inlin
             else:
                 logger.error(f"Error processing {item['filename']}: {str(e)}")
                 return item['filename'], f"\nError processing {item_type.upper()} ({item['filename']}): {str(e)}\n\n"
-    
-    # Process items in parallel
-    results = process_items_in_parallel(
-        visual_items,
-        _process_visual,
-        max_workers=MAX_WORKERS,
-        batch_size=BATCH_SIZE
-    )
-    
-    # Maintain original order (with special handling for batched PDFs)
-    order_map = {}
-    for idx, item in enumerate(visual_items):
-        if item[0] == 'pdf_batch':
-            order_map["batched_pdfs"] = idx
-        else:
-            order_map[item[1]['filename']] = idx
-    
-    sorted_results = sorted(results, key=lambda x: order_map.get(x[0], float('inf')))
-    
-    # Add results to combined text
-    for _, text in sorted_results:
-        combined_text += text
-    
+
+    results = []
+
+    if visual_items:
+        # Process items in parallel only when work exists
+        results = process_items_in_parallel(
+            visual_items,
+            _process_visual,
+            max_workers=MAX_WORKERS,
+            batch_size=BATCH_SIZE
+        )
+
+        # Maintain original order (with special handling for batched PDFs)
+        order_map = {}
+        for idx, item in enumerate(visual_items):
+            if item[0] == 'pdf_batch':
+                order_map["batched_pdfs"] = idx
+            else:
+                order_map[item[1]['filename']] = idx
+
+        sorted_results = sorted(results, key=lambda x: order_map.get(x[0], float('inf')))
+
+        # Add results to combined text
+        for _, text in sorted_results:
+            combined_text += text
+    else:
+        logger.info("No visual items found; skipping parallel visual processing.")
+
     logger.info(f"Completed email attachment processing in {time.time() - start_time:.2f}s")
     return combined_text
 
