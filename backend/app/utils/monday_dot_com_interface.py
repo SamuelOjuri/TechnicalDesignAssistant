@@ -1,4 +1,5 @@
 import json
+import mimetypes
 import requests
 from difflib import SequenceMatcher
 from flask import current_app
@@ -1042,20 +1043,36 @@ class MondayDotComInterface:
         """
         # Prepare the GraphQL mutation
         mutation = """
-        mutation ($file: File!) {
-            add_file_to_column(item_id: %s, column_id: "%s", file: $file) {
+        mutation ($file: File!, $itemId: ID!, $columnId: String!) {
+            add_file_to_column(item_id: $itemId, column_id: $columnId, file: $file) {
                 id
             }
         }
-        """ % (item_id, column_id)
+        """
+
+        operations = {
+            "query": mutation,
+            "variables": {
+                "file": None,
+                "itemId": str(item_id),
+                "columnId": column_id,
+            },
+        }
+
+        content_type = (
+            "text/csv"
+            if filename.lower().endswith(".csv")
+            else mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        )
         
         # Prepare multipart form data
         files = {
-            'variables[file]': (filename, file_content, 'application/octet-stream')
+            "0": (filename, file_content, content_type)
         }
         
         data = {
-            'query': mutation,
+            "operations": json.dumps(operations),
+            "map": json.dumps({"0": ["variables.file"]}),
         }
         
         # Use the file upload endpoint
