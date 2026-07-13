@@ -1043,21 +1043,12 @@ class MondayDotComInterface:
         """
         # Prepare the GraphQL mutation
         mutation = """
-        mutation ($file: File!, $itemId: ID!, $columnId: String!) {
-            add_file_to_column(item_id: $itemId, column_id: $columnId, file: $file) {
+        mutation ($file: File!) {
+            add_file_to_column(item_id: %s, column_id: %s, file: $file) {
                 id
             }
         }
-        """
-
-        operations = {
-            "query": mutation,
-            "variables": {
-                "file": None,
-                "itemId": str(item_id),
-                "columnId": column_id,
-            },
-        }
+        """ % (json.dumps(str(item_id)), json.dumps(str(column_id)))
 
         content_type = (
             "text/csv"
@@ -1067,12 +1058,12 @@ class MondayDotComInterface:
         
         # Prepare multipart form data
         files = {
-            "0": (filename, file_content, content_type)
+            "file": (filename, file_content, content_type)
         }
         
         data = {
-            "operations": json.dumps(operations),
-            "map": json.dumps({"0": ["variables.file"]}),
+            "query": mutation,
+            "map": json.dumps({"file": ["variables.file"]}),
         }
         
         # Use the file upload endpoint
