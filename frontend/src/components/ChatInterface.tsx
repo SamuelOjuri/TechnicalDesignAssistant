@@ -91,7 +91,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ disabled, onSendMe
           </Button>
         </form>
         {disabled && (
-          <p className="mt-2 text-sm text-gray-500">Upload and process files first, then ask follow up questions! 🙂</p>
+          <p className="mt-2 text-sm text-gray-500">Upload, process files, and ask follow up questions!</p>
         )}
       </CardContent>
     </Card>
