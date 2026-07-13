@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Alert, AlertDescription } from './ui/alert';
 import { Spinner } from './ui/spinner';
 import { MONDAY_COLUMN_MAPPING, MONDAY_BOARD_CONFIG } from '../lib/monday-columns';
+import * as Dialog from '@radix-ui/react-dialog';
+import { ClipboardCheck, X } from 'lucide-react';
 
 const formatDateForMonday = (dateString: string): string => {
   if (!dateString) return '';
@@ -67,6 +68,8 @@ interface ParameterValidatorProps {
   onSuccess?: () => void;
   emailFile?: File | null;
   paramSources?: ParameterSource | null;
+  onClose?: () => void;
+  embedded?: boolean;
 }
 
 const EMAIL_COLUMN_ID = 'file_mkpbm883'; // Email column ID from Monday.com
@@ -78,6 +81,8 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
   onSuccess,
   emailFile,
   paramSources,
+  onClose,
+  embedded = false,
 }) => {
   const [parameters, setParameters] = useState<ValidatableParameter[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -259,80 +264,96 @@ export const ParameterValidator: React.FC<ParameterValidatorProps> = ({
   }
 
   return (
-    <Card className="shadow-md border-0">
-      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg section-header">
-        <CardTitle>
-          Validate Parameters for Item Creation 
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-6">
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {success && (
-          <Alert className="mb-4 bg-green-50 border-green-200">
-            <AlertDescription className="text-green-800">{success}</AlertDescription>
-          </Alert>
-        )}
-
-        <div className="space-y-4">
-          <div className="mb-4 p-3 bg-blue-50 rounded-md">
-            <p className="text-sm text-blue-700">
-              The following parameters will be used for item creation in the Project Holding Page of Monday CRM:
-            </p>
+    <Dialog.Root open onOpenChange={(open) => !open && onClose?.()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="validator-overlay" />
+        <Dialog.Content className={`validator-drawer ${embedded ? 'validator-drawer--embedded' : ''}`}>
+          <div className="validator-header">
+            <div>
+              <p className="panel-eyebrow">Final review</p>
+              <Dialog.Title>Review CRM item</Dialog.Title>
+              <Dialog.Description>Confirm the enquiry details before creating the Monday CRM record.</Dialog.Description>
+            </div>
+            <Dialog.Close asChild>
+              <Button variant="ghost" size="icon" title="Close review" className="flex-none">
+                <X className="h-5 w-5" aria-hidden="true" />
+                <span className="sr-only">Close review</span>
+              </Button>
+            </Dialog.Close>
           </div>
 
-          {parameters.map((param, index) => (
-            <div key={param.key} className="flex items-center space-x-4">
-              <label className="w-32 font-medium text-sm">
-                {param.displayName}:
-              </label>
-              {param.editable ? (
-                <Input
-                  value={param.value}
-                  onChange={(e) => handleParameterChange(index, e.target.value)}
-                  className="flex-1"
-                  disabled={isSubmitting}
-                />
-              ) : (
-                <span className="flex-1 px-3 py-2 bg-gray-100 rounded-md text-sm">
-                  {param.value}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-6 flex justify-between">
-          <Button
-            variant="outline"
-            disabled={isSubmitting}
-            onClick={() => {
-              setError(null);
-              setSuccess(null);
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="tapered"
-            onClick={handleSubmit}
-            disabled={isSubmitting || parameters.length === 0}
-          >
-            {isSubmitting ? (
-              <>
-                <Spinner className="w-4 h-4 mr-2" />
-                Creating Item...
-              </>
-            ) : (
-              'Create Monday CRM Item'
+          <div className="validator-body">
+            {error && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+
+            {success && (
+              <Alert className="mb-4 border-[#cfd8d2] bg-[#edf4ef]">
+                <AlertDescription className="whitespace-pre-line text-[#2f6547]">{success}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-4">
+              <div className="validator-note">
+                <ClipboardCheck className="h-5 w-5" aria-hidden="true" />
+                <p>These fields will be written to the Project Holding Page in Monday CRM.</p>
+              </div>
+
+              {parameters.map((param, index) => (
+                <div key={param.key} className="validator-field">
+                  <label htmlFor={param.editable ? `validator-${param.key}` : undefined}>
+                    {param.displayName}
+                  </label>
+                  {param.editable ? (
+                    <Input
+                      id={`validator-${param.key}`}
+                      value={param.value}
+                      onChange={(e) => handleParameterChange(index, e.target.value)}
+                      className="flex-1"
+                      disabled={isSubmitting}
+                    />
+                  ) : (
+                    <span className="validator-readonly">
+                      {param.value}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="validator-footer">
+            <Dialog.Close asChild>
+              <Button
+                variant="outline"
+                disabled={isSubmitting}
+                onClick={() => {
+                  setError(null);
+                  setSuccess(null);
+                }}
+              >
+                Cancel
+              </Button>
+            </Dialog.Close>
+            <Button
+              variant="tapered"
+              onClick={handleSubmit}
+              disabled={isSubmitting || parameters.length === 0}
+            >
+              {isSubmitting ? (
+                <>
+                  <Spinner className="w-4 h-4 mr-2" />
+                  Creating Item...
+                </>
+              ) : (
+                'Create Monday CRM Item'
+              )}
+            </Button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 };

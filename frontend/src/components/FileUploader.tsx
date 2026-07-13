@@ -1,7 +1,8 @@
 import React, { useState, useRef, DragEvent } from 'react';
 import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Spinner } from './ui/spinner';
+import { FileText, Mail, ScanLine, UploadCloud } from 'lucide-react';
 
 interface FileUploaderProps {
   onUpload: (files: FileList) => void;
@@ -9,6 +10,12 @@ interface FileUploaderProps {
   currentFile?: string;
   processingStage?: string;
 }
+
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 export const FileUploader: React.FC<FileUploaderProps> = ({ 
   onUpload, 
@@ -55,29 +62,43 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     }
   };
 
-  const handleBrowseClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleBrowseClick = () => {
     if (inputRef.current && !isProcessing) {
       inputRef.current.click();
     }
   };
   
   return (
-    <Card className="shadow-md border-0">
-      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg section-header">
-        <CardTitle>
-          <span className="step-indicator">1</span> Upload & Process
-        </CardTitle>
+    <Card className="section-card">
+      <CardHeader className="section-header">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-eyebrow">Input documents</p>
+            <CardTitle>Upload enquiry files</CardTitle>
+            <CardDescription>Import email messages and supporting PDFs for technical analysis.</CardDescription>
+          </div>
+          <span className="panel-status">Step 01</span>
+        </div>
       </CardHeader>
-      <CardContent className="p-6">
+      <CardContent className="upload-content p-5 sm:p-6">
         <form onSubmit={handleSubmit} encType="multipart/form-data">
           <div className="mb-4">
             <div 
-              className={`border-2 border-dashed ${dragActive ? 'border-[#b82c25] bg-gray-100' : 'border-gray-300 bg-gray-50'} rounded-md p-8 text-center hover:bg-gray-100 transition-colors cursor-pointer`}
+              className={`upload-dropzone ${dragActive ? 'upload-dropzone--active' : ''}`}
               onDragEnter={handleDrag}
               onDragOver={handleDrag}
               onDragLeave={handleDrag}
               onDrop={handleDrop}
+              onClick={handleBrowseClick}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  handleBrowseClick();
+                }
+              }}
+              role="button"
+              tabIndex={isProcessing ? -1 : 0}
+              aria-disabled={isProcessing}
             >
               <input
                 ref={inputRef}
@@ -90,50 +111,50 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
                 disabled={isProcessing}
                 id="file-upload"
               />
-              <div onClick={handleBrowseClick} className="cursor-pointer">
-                <label className="flex flex-col items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                  <span className="text-base font-medium text-gray-700">Drag & drop files or click to browse</span>
-                  <span className="text-sm text-gray-500 mt-1">
-                    Accepts .eml, .msg, and .pdf files
-                  </span>
-                </label>
+              <div className="flex flex-col items-center">
+                <span className="upload-icon" aria-hidden="true">
+                  <UploadCloud className="h-6 w-6" />
+                </span>
+                <span className="text-sm font-bold text-[#171717]">Drop enquiry files here</span>
+                <span className="text-sm text-[#6b6d70] mt-1">or click to browse .eml, .msg, and .pdf files</span>
               </div>
               {files && !isProcessing && (
-                <div className="mt-4 text-left">
-                  <p className="text-sm font-medium text-gray-700">Selected files:</p>
-                  <ul className="mt-1 text-sm text-gray-500">
-                    {Array.from(files).map((file, index) => (
-                      <li key={index} className="truncate">{file.name}</li>
-                    ))}
+                <div className="selected-files" onClick={(event) => event.stopPropagation()}>
+                  <div className="selected-files-heading">
+                    <span>Ready to process</span>
+                    <span>{files.length} {files.length === 1 ? 'file' : 'files'}</span>
+                  </div>
+                  <ul>
+                    {Array.from(files).map((file) => {
+                      const FileIcon = /\.(eml|msg)$/i.test(file.name) ? Mail : FileText;
+                      return (
+                        <li key={`${file.name}-${file.lastModified}`}>
+                          <FileIcon className="h-4 w-4" aria-hidden="true" />
+                          <span className="truncate">{file.name}</span>
+                          <span>{formatFileSize(file.size)}</span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
               
               {isProcessing && (
-                <div className="mt-6 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
+                <div className="processing-state" onClick={(event) => event.stopPropagation()}>
                   <div className="flex items-center mb-2">
                     <Spinner className="mr-3 h-5 w-5" />
-                    <span className="font-medium text-gray-800">Processing files...</span>
+                    <span className="font-bold text-[#171717]">Processing files</span>
                   </div>
                   
                   {currentFile && (
                     <div className="mt-2 text-left">
-                      <div className="text-sm font-medium text-gray-700 mb-1">
+                      <div className="text-sm font-medium text-[#6b6d70] mb-1">
                         {processingStage || 'Processing'}:
                       </div>
-                      <div className="p-2 bg-gray-50 rounded border border-gray-200 text-sm">
-                        {currentFile.endsWith('.eml') && (
-                          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-xs mr-2">EMAIL</span>
-                        )}
-                        {currentFile.endsWith('.msg') && (
-                          <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded text-xs mr-2">OUTLOOK</span>
-                        )}
-                        {currentFile.endsWith('.pdf') && (
-                          <span className="px-1.5 py-0.5 bg-red-100 text-red-800 rounded text-xs mr-2">PDF</span>
-                        )}
+                      <div className="processing-file">
+                        <span className="file-type-badge">
+                          {currentFile.endsWith('.eml') ? 'EMAIL' : currentFile.endsWith('.msg') ? 'OUTLOOK' : 'PDF'}
+                        </span>
                         {currentFile}
                       </div>
                     </div>
@@ -142,24 +163,24 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
               )}
             </div>
           </div>
-          <Button 
-            type="submit" 
-            variant="tapered"
-            size="xl"
-            disabled={!files || isProcessing}
-          >
-            {isProcessing ? (
-              <span className="flex items-center">
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Processing...
-              </span>
-            ) : (
-              "▶️ Process Files"
-            )}
-          </Button>
+          <div className="upload-actions flex justify-end">
+            <Button
+              type="submit"
+              variant="tapered"
+              size="lg"
+              disabled={!files || isProcessing}
+              className="gap-2 w-full sm:w-auto"
+            >
+              {isProcessing ? (
+                <span className="flex items-center">
+                  <Spinner className="mr-2 h-4 w-4" />
+                  Processing...
+                </span>
+              ) : (
+                <><ScanLine className="h-4 w-4" aria-hidden="true" /> Process files</>
+              )}
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>

@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { getParameterFormatting } from '../lib/parameter-formatting';
 import { Spinner } from './ui/spinner';
+import { ArrowRight, Download, FileSearch, RotateCcw } from 'lucide-react';
 
 interface Parameter {
   [key: string]: string;
@@ -22,6 +23,7 @@ interface ResultsDisplayProps {
   extractedText: string;
   isLoading?: boolean;
   apiBaseUrl: string;
+  compact?: boolean;
   onShowValidator?: () => void;
 }
 
@@ -33,20 +35,25 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
   extractedText,
   isLoading = false,
   apiBaseUrl,
+  compact = false,
   onShowValidator
 }) => {
   if (isLoading) {
     return (
-      <Card className="shadow-md border-0">
-        <CardHeader className="bg-[#b82c25] text-white rounded-t-lg section-header">
-          <CardTitle>
-            <span className="step-indicator">2</span> Analysis Results
-          </CardTitle>
+      <Card className="section-card">
+        <CardHeader className="section-header">
+          <div className="panel-heading">
+            <div>
+              <p className="panel-eyebrow">Technical analysis</p>
+              <CardTitle>Preparing results</CardTitle>
+            </div>
+            <span className="panel-status panel-status--active">In progress</span>
+          </div>
         </CardHeader>
         <CardContent className="results-content">
-          <div className="flex flex-col items-center justify-center py-8">
+          <div className="flex flex-col items-center justify-center py-14">
             <Spinner className="mb-4 h-8 w-8" /> 
-            <p className="text-gray-600">Analyzing data and preparing results...</p>
+            <p className="text-sm font-semibold text-[#444648]">Analyzing data and preparing results...</p>
           </div>
         </CardContent>
       </Card>
@@ -55,18 +62,14 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
 
   if (!results) {
     return (
-      <Card className="shadow-md border-0">
-        <CardHeader className="bg-[#b82c25] text-white rounded-t-lg section-header">
-          <CardTitle>
-            <span className="step-indicator">2</span> Analysis Results
-          </CardTitle>
+      <Card className="section-card">
+        <CardHeader className="section-header">
+          <CardTitle>Analysis results</CardTitle>
         </CardHeader>
         <CardContent className="p-6 bg-white">
-          <div className="border-2 border-dashed border-gray-300 rounded-md p-8 text-center bg-gray-50 hover:bg-gray-100 transition-colors">
+          <div className="analysis-placeholder">
             <div className="flex flex-col items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
+              <FileSearch className="h-8 w-8 text-[#8a8b8d] mb-3" aria-hidden="true" />
               <p className="text-base font-medium text-gray-700">Upload and process files to see analysis results here.</p>
             </div>
           </div>
@@ -113,78 +116,122 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
       });
   };
 
+  const renderParameterValue = (key: string, value: string) => {
+    const formatting = getParameterFormatting(key, value);
+
+    if (!formatting.tooltip) {
+      return <span className={formatting.className}>{formatting.label}</span>;
+    }
+
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className={formatting.className}>{formatting.label}</span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{formatting.tooltip}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  };
+
+  const renderSource = (key: string) => {
+    const source = sources?.[key];
+    if (!source) return null;
+
+    return (
+      <span className={`source-badge source-badge--${source.toLowerCase().replace(/\s+/g, '-')}`}>
+        {source}
+      </span>
+    );
+  };
+
   return (
-    <Card className="shadow-md border-0 section-card">
-      <CardHeader className="bg-[#b82c25] text-white rounded-t-lg section-header">
-        <CardTitle>
-          <span className="step-indicator">2</span> Analysis Results {enquiryType && `(${enquiryType})`}
-        </CardTitle>
+    <Card className="section-card">
+      <CardHeader className="section-header">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-eyebrow">Technical analysis</p>
+            <CardTitle>Extracted parameters</CardTitle>
+          </div>
+          {enquiryType && <span className="panel-status panel-status--active">{enquiryType}</span>}
+        </div>
       </CardHeader>
-      <CardContent className="results-content">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Parameter</TableHead>
-              <TableHead>Value</TableHead>
-              <TableHead>Source</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+      <CardContent className={`results-content ${compact ? 'results-content--compact' : ''}`}>
+        {compact ? (
+          <dl className="compact-results">
             {Object.entries(results).map(([key, value]) => {
-              const formatting = getParameterFormatting(key, value);
               return (
-                <TableRow key={key}>
-                  <TableCell className="font-medium">{key}</TableCell>
-                  <TableCell>
-                    {formatting.tooltip ? (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className={formatting.className}>{formatting.label}</span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{formatting.tooltip}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    ) : (
-                      <span className={formatting.className}>{formatting.label}</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {sources?.[key] ?? ''}
-                  </TableCell>
-                </TableRow>
+                <div className="compact-result-row" key={key}>
+                  <div className="compact-result-copy">
+                    <dt>{key}</dt>
+                    <dd>{renderParameterValue(key, value)}</dd>
+                  </div>
+                  {renderSource(key)}
+                </div>
               );
             })}
-          </TableBody>
-        </Table>
-        <div className="mt-4 flex justify-between items-center">
-          <Button variant="tapered" size="default" onClick={downloadExcel}>
-            Download as Excel
-          </Button>
-          
+          </dl>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Parameter</TableHead>
+                <TableHead>Value</TableHead>
+                <TableHead>Source</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Object.entries(results).map(([key, value]) => (
+                <TableRow key={key}>
+                  <TableCell className="font-medium">{key}</TableCell>
+                  <TableCell>{renderParameterValue(key, value)}</TableCell>
+                  <TableCell>{renderSource(key)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+        <div className={`results-toolbar ${compact ? 'results-toolbar--compact' : ''}`}>
           <Button 
             variant="outline" 
             size="default" 
             onClick={onReset}
-            className="bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200 text-blue-600 hover:from-blue-100 hover:to-blue-200 transition-all duration-300 hover:shadow-md"
+            className={compact ? 'results-icon-action' : 'gap-2'}
+            title={compact ? 'Start a new enquiry' : undefined}
+            aria-label={compact ? 'Start a new enquiry' : undefined}
           >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Process New Files
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            <span className={compact ? 'sr-only' : undefined}>New enquiry</span>
           </Button>
 
-          {onShowValidator && (
-            <Button 
-              variant="tapered" 
-              size="default" 
-              onClick={onShowValidator}
+          <div className="results-toolbar-actions">
+            <Button
+              variant="outline"
+              size="default"
+              onClick={downloadExcel}
+              className={compact ? 'results-icon-action' : 'gap-2'}
+              title={compact ? 'Export results to Excel' : undefined}
+              aria-label={compact ? 'Export results to Excel' : undefined}
             >
-              Create Monday CRM Item
+              <Download className="h-4 w-4" aria-hidden="true" />
+              <span className={compact ? 'sr-only' : undefined}>Export Excel</span>
             </Button>
-          )}
+
+            {onShowValidator && (
+              <Button
+                variant="tapered"
+                size="default"
+                onClick={onShowValidator}
+                className="gap-2"
+              >
+                Review for CRM
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

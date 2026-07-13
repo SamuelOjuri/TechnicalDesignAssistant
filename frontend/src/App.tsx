@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import './styles/globals.css';
 import { FileUploader } from './components/FileUploader';
 import { ResultsDisplay } from './components/ResultsDisplay';
@@ -6,6 +6,7 @@ import { ChatInterface } from './components/ChatInterface';
 import { MondayProjectSearch } from './components/MondayProjectSearch';
 import { Button } from './components/ui/button';
 import { ParameterValidator } from './components/ParameterValidator';
+import { Check, ClipboardCheck, FileSearch, HelpCircle, MessageSquareText, RotateCcw, Upload } from 'lucide-react';
 //import { Alert, AlertTitle, AlertDescription } from './components/ui/alert';
 
 /**
@@ -21,12 +22,30 @@ interface Parameter {
 // Add constants for better maintainability
 const TAPEREDPLUS_ASSIGNMENT_TEXT = "To be assigned by TaperedPlus";
 
+const useMediaQuery = (query: string) => {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(query);
+    const updateMatches = (event: MediaQueryListEvent) => setMatches(event.matches);
+
+    setMatches(mediaQuery.matches);
+    mediaQuery.addEventListener('change', updateMatches);
+    return () => mediaQuery.removeEventListener('change', updateMatches);
+  }, [query]);
+
+  return matches;
+};
+
 // NEW – keep track of where each value was taken from
 interface ParameterSource {
   [key: string]: 'Email Content' | 'Monday CRM' | 'Business Rule';
 }
 
 const App: React.FC = () => {
+  const isEmbedded = new URLSearchParams(window.location.search).get('layout') === 'monday';
+  const isCompactAnalysis = useMediaQuery('(max-width: 899px)');
+  const isCompactResults = useMediaQuery('(max-width: 560px)');
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractedParams, setExtractedParams] = useState<Parameter | null>(null);
   const [extractedText, setExtractedText] = useState<string | null>(null);
@@ -41,6 +60,7 @@ const App: React.FC = () => {
   const [paramSources, setParamSources] = useState<ParameterSource | null>(null); // NEW
   const [showParameterValidator, setShowParameterValidator] = useState(false);
   const [originalEmailFile, setOriginalEmailFile] = useState<File | null>(null);
+  const [analysisTab, setAnalysisTab] = useState<'parameters' | 'assistant'>('parameters');
 
   // SNAPSHOT for validator params
   const [validatorParams, setValidatorParams] = useState<Parameter | null>(null);
@@ -347,6 +367,37 @@ const App: React.FC = () => {
     !isLoadingResults &&
     !showMondaySearch;
 
+  const hasUploadedData = Boolean(extractedText || extractedParams || showMondaySearch);
+  const hasAnalysisWorkspace = Boolean(extractedParams || isLoadingResults);
+  const workflowSteps = [
+    {
+      label: 'Upload files',
+      icon: Upload,
+      status: hasUploadedData ? 'complete' : 'current',
+    },
+    {
+      label: 'Review analysis',
+      icon: FileSearch,
+      status: showParameterValidator
+        ? 'complete'
+        : hasUploadedData || isLoadingResults
+          ? 'current'
+          : 'upcoming',
+    },
+    {
+      label: 'Create CRM task',
+      icon: ClipboardCheck,
+      status: showParameterValidator ? 'current' : 'upcoming',
+    },
+  ] as const;
+  const currentWorkflowIndex = Math.max(
+    workflowSteps.findIndex((step) => step.status === 'current'),
+    0
+  );
+  const currentWorkflowStep = workflowSteps[currentWorkflowIndex];
+  const CurrentWorkflowIcon = currentWorkflowStep.icon;
+  const showAnalysisTabs = isEmbedded && isCompactAnalysis && Boolean(extractedParams);
+
   // Only allow showValidator when we're ready, and snapshot the params
   const handleShowValidator = () => {
     if (!canCreateMondayItem || !extractedParams) return;
@@ -365,6 +416,7 @@ const App: React.FC = () => {
     setShowParameterValidator(false);
     setOriginalEmailFile(null);
     setValidatorParams(null); // also clear snapshot
+    setAnalysisTab('parameters');
     // Clear file selection - we need to find the file input element and reset it
     const fileInput = document.querySelector('input[type="file"]');
     if (fileInput) {
@@ -378,36 +430,88 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* TaperedPlus Header */}
-      <header className="app-header">
-        <div className="container mx-auto px-4 flex items-center">
-          {/* Logo on left */}
-          <div className="flex-none">
-            <img 
-              src="/tapered-logo.png" 
-              alt="TaperedPlus Limited" 
-              className="h-8 w-auto object-contain" 
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }} 
-            />
+    <div className="min-h-screen app-shell flex flex-col" data-layout={isEmbedded ? 'embedded' : 'standalone'}>
+      {!isEmbedded && (
+        <header className="app-header">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-[68px] flex items-center justify-between gap-4">
+            <div className="flex items-center min-w-0">
+              <img
+                src="/tapered-logo.png"
+                alt="TaperedPlus Limited"
+                className="h-8 w-auto object-contain flex-none"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+              <span className="hidden sm:block ml-4 pl-4 border-l border-[#d9d9d4] app-title truncate">
+                Technical Design Assistant
+              </span>
+            </div>
+            <Button variant="ghost" size="sm" className="gap-2 text-[#444648] hover:bg-[#f4f4f1] hover:text-[#171717]">
+              <HelpCircle className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Help</span>
+            </Button>
           </div>
-          
-          {/* Title centered in remaining space */}
-          <div className="flex-grow text-center">
-            <span className="app-title">Technical Design Assistant</span>
-          </div>
-          
-          {/* Help button on right */}
-          <div className="flex-none">
-            <Button variant="ghost" className="text-white hover:bg-red-800">Help</Button>
-          </div>
-        </div>
-      </header>
+        </header>
+      )}
 
-      <main className="container mx-auto py-10 px-4">        
-        <div className="space-y-8 max-w-4xl mx-auto">
+      <main className="app-main w-full max-w-7xl mx-auto flex-1 px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
+        {!isEmbedded && (
+          <section className="workspace-intro" aria-labelledby="workspace-title">
+            <p className="workspace-eyebrow">TaperedPlus Intelligent Design System</p>
+            <div className="workspace-intro-copy">
+              <h1 id="workspace-title">Automated Enquiry Processor</h1>
+              <p>Transform raw enquiries into verified, CRM-ready technical data.</p>
+            </div>
+          </section>
+        )}
+
+        {isEmbedded ? (
+          <nav className="embedded-progress" aria-label="Enquiry processing progress">
+            <div className="embedded-progress-summary">
+              <span className="embedded-progress-icon" aria-hidden="true">
+                <CurrentWorkflowIcon className="h-4 w-4" />
+              </span>
+              <span className="embedded-progress-copy">
+                <span>Step {currentWorkflowIndex + 1} of {workflowSteps.length}</span>
+                <strong>{currentWorkflowStep.label}</strong>
+              </span>
+            </div>
+            <div
+              className="embedded-progress-track"
+              role="progressbar"
+              aria-label={`Step ${currentWorkflowIndex + 1} of ${workflowSteps.length}: ${currentWorkflowStep.label}`}
+              aria-valuemin={1}
+              aria-valuemax={workflowSteps.length}
+              aria-valuenow={currentWorkflowIndex + 1}
+            >
+              {workflowSteps.map((step) => (
+                <span key={step.label} className={`embedded-progress-segment embedded-progress-segment--${step.status}`} />
+              ))}
+            </div>
+          </nav>
+        ) : (
+          <nav className="workflow-stepper" aria-label="Enquiry processing progress">
+            <ol>
+              {workflowSteps.map((step, index) => {
+                const StepIcon = step.icon;
+                return (
+                  <li key={step.label} className={`workflow-step workflow-step--${step.status}`} aria-current={step.status === 'current' ? 'step' : undefined}>
+                    <span className="workflow-step-icon" aria-hidden="true">
+                      {step.status === 'complete' ? <Check className="h-4 w-4" /> : <StepIcon className="h-4 w-4" />}
+                    </span>
+                    <span className="workflow-step-copy">
+                      <span>0{index + 1}</span>
+                      <strong>{step.label}</strong>
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
+        )}
+
+        <div className="workflow-content space-y-6 lg:space-y-8">
           {/* {error && (
             <Alert variant="destructive">
               <AlertTitle>Error</AlertTitle>
@@ -415,85 +519,144 @@ const App: React.FC = () => {
             </Alert>
           )} */}
           
-          <div className="section-container">
-            <FileUploader 
-              onUpload={handleFileUpload} 
-              isProcessing={isProcessing} 
-              currentFile={currentFile || undefined}
-              processingStage={processingStage || undefined}
-            />
-          </div>
+          {(!hasUploadedData || isProcessing) && (
+            <section aria-label="Upload enquiry documents">
+              <FileUploader
+                onUpload={handleFileUpload}
+                isProcessing={isProcessing}
+                currentFile={currentFile || undefined}
+                processingStage={processingStage || undefined}
+              />
+            </section>
+          )}
           
           {showMondaySearch && projectName && (
-            <div className="section-container">
+            <section aria-label="Match enquiry to a project">
               <MondayProjectSearch 
                 apiBaseUrl={API_BASE_URL}
                 projectName={projectName}
                 onProjectSelected={handleProjectSelected}
                 onContinueAsNew={handleContinueAsNew}
+                onReset={resetApp}
+                embedded={isEmbedded}
               />
-            </div>
+            </section>
           )}
           
-          <div className="section-container">
-            <ResultsDisplay 
-              results={extractedParams} 
-              sources={paramSources}
-              onReset={resetApp}
-              enquiryType={enquiryType}
-              extractedText={extractedText ?? ''}
-              isLoading={isLoadingResults}
-              apiBaseUrl={API_BASE_URL}
-              onShowValidator={canCreateMondayItem ? handleShowValidator : undefined}
-            />
-          </div>
-          
+          {hasAnalysisWorkspace && (
+            <>
+              {showAnalysisTabs && (
+                <div className="analysis-tabs" role="tablist" aria-label="Analysis workspace">
+                  <button
+                    type="button"
+                    role="tab"
+                    id="parameters-tab"
+                    aria-controls="parameters-panel"
+                    aria-selected={analysisTab === 'parameters'}
+                    className={analysisTab === 'parameters' ? 'analysis-tab--active' : undefined}
+                    onClick={() => setAnalysisTab('parameters')}
+                  >
+                    <FileSearch className="h-4 w-4" aria-hidden="true" />
+                    Parameters
+                    <span>{Object.keys(extractedParams ?? {}).length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    id="assistant-tab"
+                    aria-controls="assistant-panel"
+                    aria-selected={analysisTab === 'assistant'}
+                    className={analysisTab === 'assistant' ? 'analysis-tab--active' : undefined}
+                    onClick={() => setAnalysisTab('assistant')}
+                  >
+                    <MessageSquareText className="h-4 w-4" aria-hidden="true" />
+                    Assistant
+                  </button>
+                </div>
+              )}
+              <div className={`analysis-workspace ${extractedParams ? 'analysis-workspace--with-chat' : ''}`}>
+                <section
+                  id="parameters-panel"
+                  className="min-w-0"
+                  aria-label="Analysis results"
+                  aria-labelledby={showAnalysisTabs ? 'parameters-tab' : undefined}
+                  hidden={showAnalysisTabs && analysisTab !== 'parameters'}
+                >
+                  <ResultsDisplay
+                    results={extractedParams}
+                    sources={paramSources}
+                    onReset={resetApp}
+                    enquiryType={enquiryType}
+                    extractedText={extractedText ?? ''}
+                    isLoading={isLoadingResults}
+                    apiBaseUrl={API_BASE_URL}
+                    compact={isEmbedded && isCompactResults}
+                    onShowValidator={canCreateMondayItem ? handleShowValidator : undefined}
+                  />
+                </section>
+
+                {extractedParams && (
+                  <aside
+                    id="assistant-panel"
+                    className="min-w-0"
+                    aria-label="Technical assistant"
+                    aria-labelledby={showAnalysisTabs ? 'assistant-tab' : undefined}
+                    hidden={showAnalysisTabs && analysisTab !== 'assistant'}
+                  >
+                    <ChatInterface
+                      disabled={false}
+                      onSendMessage={handleSendChatMessage}
+                      onReset={chatResetTrigger}
+                    />
+                  </aside>
+                )}
+              </div>
+            </>
+          )}
+
           {showParameterValidator && extractedParams && (
-            <div className="section-container">
-              <ParameterValidator
-                extractedParams={validatorParams ?? extractedParams}
-                enquiryType={enquiryType}
-                apiBaseUrl={API_BASE_URL}
-                emailFile={originalEmailFile}
-                paramSources={paramSources}
-                onSuccess={() => {
-                  // Optional: Handle success, maybe show a success message
-                  // setShowParameterValidator(false);
-                  // setValidatorParams(null);
-                }}
-              />
-            </div>
+            <ParameterValidator
+              extractedParams={validatorParams ?? extractedParams}
+              enquiryType={enquiryType}
+              apiBaseUrl={API_BASE_URL}
+              emailFile={originalEmailFile}
+              paramSources={paramSources}
+              embedded={isEmbedded}
+              onClose={() => {
+                setShowParameterValidator(false);
+                setValidatorParams(null);
+              }}
+              onSuccess={() => {
+                // Optional: Handle success, maybe show a success message
+                // setShowParameterValidator(false);
+                // setValidatorParams(null);
+              }}
+            />
           )}
           
-          <div className="section-container">
-            <ChatInterface 
-              disabled={!extractedParams} 
-              onSendMessage={handleSendChatMessage}
-              onReset={chatResetTrigger}
-            />
-          </div>
-          
-          <div className="text-center mt-10">
-            <Button 
-              variant="outline" 
-              onClick={resetApp}
-              className="mx-auto flex items-center gap-2 bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-300 px-6 py-2 rounded-md hover:shadow-sm"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Reset App
-            </Button>
-          </div>
+          {hasUploadedData && !extractedParams && !isEmbedded && (
+            <div className="flex justify-center pt-2">
+              <Button
+                variant="outline"
+                onClick={resetApp}
+                className="gap-2 bg-white text-[#444648] hover:text-[#171717]"
+              >
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                Start new enquiry
+              </Button>
+            </div>
+          )}
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="bg-gray-100 py-6 mt-12">
-        <div className="container mx-auto px-4 text-center text-gray-600 text-sm">
-          &copy; {new Date().getFullYear()} TaperedPlus Limited. All rights reserved.
-        </div>
-      </footer>
+      {!isEmbedded && (
+        <footer className="app-footer">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <strong>TaperedPlus</strong>
+            <span>&copy; {new Date().getFullYear()} TaperedPlus Limited. All rights reserved.</span>
+          </div>
+        </footer>
+      )}
     </div>
   );
 };
