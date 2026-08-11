@@ -18,9 +18,9 @@ def extract_parameters(all_text, enquiry_type=None):
     query = """Extract the following design parameters from the documents for a TaperedPlus technical drawing request: 
             - Email Subject: (The subject line of the email requesting the service from TaperedPlus).
             - Post Code of Project Location: (Mostly found in the title block of the drawing attached to emails. Ignore the postcode of any company office address or sender/recipient address and use the post code of the project location only, otherwise state 'Not provided').
-            - Drawing Reference: (TaperedPlus Reference Number e.g. TP*****_**.** - *. Look for references associated with TaperedPlus specifically. If multiple exist, prioritize the latest one mentioned in the context of the request *to* TaperedPlus).
-            - Drawing Title (The Project Name, usually the project location).
-            - Revision (Suffix of the drawing reference e.g. **.** - A. If multiple exist, use the one associated with the Drawing Reference identified above).
+            - Drawing Title: (The Project Name, usually the project location).
+            - Drawing Reference: (Drawing Reference Number issued by TaperedPlus  [e.g. TP*****_**.** - *]. If multiple exist, prioritize the latest one mentioned in the context of the request to TaperedPlus).
+            - Revision: (Suffix of the selected  TaperedPlus Reference Number. This is the Suffix after the underscore in the drawing reference [e.g. **.** - * from TP*****_**.** - *]).
             - Date Received: (Date the email requesting the service *from TaperedPlus* was sent by the client. In a forwarded email chain, this is the date the email was *sent to TaperedPlus*, NOT the date of the original email further down the chain).
             - Hour Received: (Local time the email was sent *to TaperedPlus*. Use 24-hour format, e.g. 14:23).
             - Company: (Identify the company *directly requesting* technical drawings or services *from TaperedPlus*. In a forwarded email, this is the company of the person *sending the email to TaperedPlus*, NOT the company of the original sender further down the chain. Look for the company directly communicating with TaperedPlus).
@@ -50,7 +50,7 @@ def extract_parameters(all_text, enquiry_type=None):
     # Parse the response into structured data
     df_row = {}
     for p in [
-        "Email Subject", "Post Code", "Drawing Reference", "Drawing Title", "Revision", 
+        "Email Subject", "Post Code", "Drawing Title", "Drawing Reference", "Revision", 
         "Date Received", "Hour Received", "Company", "Contact", "Reason for Change", 
         "Surveyor", "Target U-Value", "Target Min U-Value", 
         "Fall of Tapered", "Tapered Insulation", "Decking"
